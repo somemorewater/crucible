@@ -1,0 +1,6 @@
+-- Initial migration placeholder
+-- Actual schema is bootstrapped via scripts/init-db.sql for Docker.
+-- This file exists so `sqlx migrate run` succeeds in non-Docker environments.
+--
+-- To create new migrations:
+--   sqlx migrate add <name>

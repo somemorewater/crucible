@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # Jaeger all-in-one for development and testing
+  # Includes collector, query UI, and storage
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    container_name: crucible-jaeger
+    environment:
+      # Collector configuration
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      
+      # Storage configuration (in-memory for dev)
+      - SPAN_STORAGE_TYPE=memory
+      - MEMORY_MAX_TRACES=10000
+      
+      # Query configuration
+      - QUERY_BASE_PATH=/jaeger
+      
+      # Sampling configuration
+      - SAMPLING_STRATEGIES_FILE=/etc/jaeger/sampling_strategies.json
+    ports:
+      # Jaeger UI
+      - "16686:16686"
+      
+      # OTLP gRPC receiver (for OpenTelemetry)
+      - "4317:4317"
+      
+      # OTLP HTTP receiver
+      - "4318:4318"
+      
+      # Jaeger Thrift receiver (legacy)
+      - "14268:14268"
+      
+      # Zipkin receiver (compatibility)
+      - "9411:9411"
+      
+      # Health check
+      - "14269:14269"
+    volumes:
+      - ./jaeger-sampling.json:/etc/jaeger/sampling_strategies.json:ro
+    networks:
+      - crucible-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # PostgreSQL database (if not already running)
+  postgres:
+    image: postgres:16-alpine
+    container_name: crucible-postgres
+    environment:
+      POSTGRES_DB: crucible
+      POSTGRES_USER: crucible
+      POSTGRES_PASSWORD: crucible_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - crucible-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crucible"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis cache (if not already running)
+  redis:
+    image: redis:7-alpine
+    container_name: crucible-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - crucible-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  crucible-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

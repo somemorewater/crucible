@@ -1,0 +1,30 @@
+{
+  "service_strategies": [
+    {
+      "service": "crucible-backend",
+      "type": "probabilistic",
+      "param": 1.0,
+      "operation_strategies": [
+        {
+          "operation": "http.request",
+          "type": "probabilistic",
+          "param": 1.0
+        },
+        {
+          "operation": "db.query",
+          "type": "probabilistic",
+          "param": 1.0
+        },
+        {
+          "operation": "db.redis.command",
+          "type": "probabilistic",
+          "param": 1.0
+        }
+      ]
+    }
+  ],
+  "default_strategy": {
+    "type": "probabilistic",
+    "param": 0.01
+  }
+}

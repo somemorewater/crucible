@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(deprecated)]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
 
 /// Current state of the escrow.
@@ -66,7 +67,7 @@ impl Escrow {
         // Pull tokens from depositor into this contract.
         token::Client::new(&env, &token).transfer(
             &depositor,
-            &env.current_contract_address(),
+            env.current_contract_address(),
             &amount,
         );
 

@@ -17,3 +17,154 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 dotenvy = "0.15"
 tower-http = { version = "0.5", features = ["trace"] }
+name = "crucible-backend"
+version = "0.1.0"
+edition = "2021"
+description = "Backend API server for the Crucible smart contract testing platform"
+license = "MIT"
+authors = ["Crucible Contributors"]
+
+[[bin]]
+name = "crucible-backend"
+path = "src/main.rs"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros"] }
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "request-id"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Database
+sqlx = { version = "0.7", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+    "json",
+    "migrate",
+] }
+
+# Redis
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+thiserror = "1"
+
+[dev-dependencies]
+# Testing
+reqwest = { version = "0.12", features = ["json"] }
+tokio-test = "0.4"
+testcontainers = "0.16"
+wiremock = "0.6"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[dependencies]
+axum = "0.7"
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio", "macros"] }
+redis = { version = "0.25", features = ["tokio-comp"] }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = "0.8"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[dev-dependencies]
+tower = "0.4"
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "backup"
+path = "src/bin/backup.rs"
+[features]
+testutils = ["mockall"]
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros", "chrono", "uuid"] }
+redis = { version = "0.24", features = ["tokio-comp", "json"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json"] }
+redis = { version = "0.27", features = ["tokio-comp", "json"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+hyper = { version = "1.0", features = ["full"] }
+mime = "0.3"
+tokio = { version = "1", features = ["full", "test-util"] }
+arc-swap = "1.7"
+async-trait = "0.1"
+dotenvy = "0.15"
+utoipa = { version = "5.0", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
+apalis = { version = "0.6" }
+apalis-redis = "0.6"
+rust_decimal = { version = "1.35", features = ["serde"] }
+stellar-xdr = { version = "21.0", features = ["std"] }
+base64 = "0.22"
+validator = { version = "0.19", features = ["derive"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower_governor = "0.4"
+mockall = { version = "0.13", optional = true }
+opentelemetry = { version = "0.31", features = ["trace"] }
+opentelemetry_sdk = { version = "0.31", features = ["trace", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
+tracing-opentelemetry = { version = "0.32", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# OpenTelemetry and tracing instrumentation
+opentelemetry = { version = "0.24", features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.17", features = ["trace", "grpc-tonic"] }
+opentelemetry-semantic-conventions = "0.16"
+opentelemetry_sdk = { version = "0.24", features = ["trace", "rt-tokio"] }
+tracing-opentelemetry = "0.25"
+tonic = "0.12"
+
+[dev-dependencies]
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace"] }
+rust_decimal_macros = "1.35"
+criterion = { version = "0.5", features = ["async_tokio"] }
+hyper = { version = "1.0", features = ["full"] }
+mime = "0.3"
+mockall = "0.13"
+mockall = "0.12"
+
+[[bench]]
+name = "performance"
+harness = false
+
+[[bench]]
+name = "dashboard_bench"
+harness = false
+

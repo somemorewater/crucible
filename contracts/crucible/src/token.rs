@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Mock token contract for testing Soroban contracts.
 //!
 //! Provides `MockToken` - a wrapper around the Stellar Asset Contract (SAC)
