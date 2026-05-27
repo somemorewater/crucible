@@ -1,0 +1,17 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+max_connections = 10000
+
+[database]
+max_connections = 100
+min_connections = 20
+connect_timeout_secs = 5
+idle_timeout_secs = 120
+
+[redis]
+pool_size = 100
+
+[observability]
+log_level = "info"
+enable_metrics = true

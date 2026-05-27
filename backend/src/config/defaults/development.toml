@@ -1,0 +1,17 @@
+[server]
+host = "127.0.0.1"
+port = 3000
+max_connections = 100
+
+[database]
+max_connections = 5
+min_connections = 1
+connect_timeout_secs = 5
+idle_timeout_secs = 3600 # Longer for easier local debugging
+
+[redis]
+pool_size = 5
+
+[observability]
+log_level = "debug"
+enable_metrics = false
