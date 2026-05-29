@@ -7,7 +7,7 @@ use axum::{
 };
 use backend::api::handlers::dashboard::{get_dashboard, DashboardState};
 use backend::{
-    api::handlers::{dashboard, profiling, stellar},
+    api::handlers::{dashboard, errors, profiling, stellar},
     api::middleware::logging::logging_middleware,
     config::{AppConfig, Environment, reload::{ConfigManager, handle_reload, handle_get_config}},
     jobs::{monitor_transaction, TransactionMonitorJob},
@@ -171,6 +171,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 .route("/contracts/:contract_id/stats", get(dashboard::get_contract_stats))
                 .with_state(dashboard_state),
         )
+        .nest(
+            "/api/v1/errors",
+            errors::error_analytics_routes(db_pool.clone(), redis_conn_dashboard.clone())
+        )
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -248,13 +252,7 @@ async fn main() -> Result<(), anyhow::Error> {
         tracing::error!("Application error: {e}");
     }
     
-    result
-        },
-        _ = worker.run() => {
-            tracing::info!("Worker stopped");
-            Ok(())
-        }
-    }
+    result?;
 
     Ok(())
 }

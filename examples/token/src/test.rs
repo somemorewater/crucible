@@ -176,9 +176,9 @@ fn test_balance_query_emits_no_event() {
     let alice = f.env.account("alice");
     {
         use soroban_sdk::testutils::Events as _;
-        let before = f.env.inner().events().all().len();
+        let before = f.env.inner().events().all().events().len();
         f.client().balance(&alice);
-        let after = f.env.inner().events().all().len();
+        let after = f.env.inner().events().all().events().len();
         assert_eq!(before, after, "balance() should not emit events");
     }
 }

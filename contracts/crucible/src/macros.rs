@@ -76,18 +76,9 @@ macro_rules! assert_emitted {
                 ($data).into_val(__env),
             )
         ];
-        let mut __found = false;
-        let mut __i = 0u32;
-        while __i < __events.len() {
-            if __events.slice(__i..__i + 1) == __expected_vec {
-                __found = true;
-                break;
-            }
-            __i += 1;
-        }
-        assert!(
-            __found,
-            "Expected event was not found in the event log. Events: {:?}",
+        assert_eq!(
+            __events, __expected_vec,
+            "Expected event log to match exactly. Events: {:?}",
             __events
         );
     }};
@@ -107,9 +98,10 @@ macro_rules! assert_not_emitted {
         use soroban_sdk::testutils::Events as _;
         let __events = $env.inner().events().all();
         assert!(
-            __events.is_empty(),
-            "Expected no events to be emitted, but {} were emitted",
-            __events.len()
+            __events.events().is_empty(),
+            "Expected no events to be emitted, but {} were emitted. Events: {:?}",
+            __events.events().len(),
+            __events
         );
     }};
 }

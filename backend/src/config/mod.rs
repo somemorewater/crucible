@@ -161,22 +161,3 @@ impl AppConfig {
         Ok(())
     }
 }
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig {
-                host: "0.0.0.0".to_string(),
-                port: 3000,
-            },
-            database: DatabaseConfig {
-                url: "postgres://postgres:postgres@localhost:5432/crucible".to_string(),
-                max_connections: 5,
-            },
-            redis: RedisConfig {
-                url: "redis://127.0.0.1:6379".to_string(),
-            },
-            log_level: "info".to_string(),
-        }
-    }
-}

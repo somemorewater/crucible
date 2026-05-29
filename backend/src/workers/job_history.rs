@@ -1,0 +1,146 @@
+//! SCHEDULER APPROACH: Option B — Custom Tokio interval loop with cron crate
+//! Rationale: We require strict control over execution guarantees such as distributed locking, timeouts, retries, and history logging. A custom loop using `tokio::time::sleep_until` and the `cron` crate allows us to wrap the execution precisely in a Redis lock and accurately handle timeouts using `tokio::time::timeout`.
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Type};
+use uuid::Uuid;
+
+use crate::workers::error::JobError;
+
+/// Status of a job run execution.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[sqlx(type_name = "job_run_status", rename_all = "snake_case")]
+pub enum JobRunStatus {
+    Running,
+    Succeeded,
+    Failed,
+    TimedOut,
+}
+
+/// Represents a single execution of a scheduled job.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobRun {
+    pub id: Uuid,
+    pub job_name: String,
+    pub started_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub status: JobRunStatus,
+    pub error_message: Option<String>,
+    pub duration_ms: Option<i64>,
+}
+
+/// Records the start of a job execution, inserting a new record with `Running` status.
+/// Returns the unique `Uuid` for this job run.
+pub async fn record_start(pool: &PgPool, job_name: &str) -> Result<Uuid, JobError> {
+    let id = Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO job_runs (id, job_name, started_at, status)
+        VALUES ($1, $2, NOW(), 'running')
+        "#,
+        id,
+        job_name
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(id)
+}
+
+/// Records the successful completion of a job run.
+pub async fn record_success(pool: &PgPool, run_id: Uuid, duration_ms: i64) -> Result<(), JobError> {
+    sqlx::query!(
+        r#"
+        UPDATE job_runs
+        SET status = 'succeeded', finished_at = NOW(), duration_ms = $2
+        WHERE id = $1
+        "#,
+        run_id,
+        duration_ms
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Records the failure of a job run, storing the error message.
+pub async fn record_failure(
+    pool: &PgPool,
+    run_id: Uuid,
+    error: &str,
+    duration_ms: i64,
+) -> Result<(), JobError> {
+    sqlx::query!(
+        r#"
+        UPDATE job_runs
+        SET status = 'failed', finished_at = NOW(), duration_ms = $2, error_message = $3
+        WHERE id = $1
+        "#,
+        run_id,
+        duration_ms,
+        error
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Records that a job timed out.
+pub async fn record_timeout(
+    pool: &PgPool,
+    run_id: Uuid,
+    duration_ms: i64,
+) -> Result<(), JobError> {
+    sqlx::query!(
+        r#"
+        UPDATE job_runs
+        SET status = 'timed_out', finished_at = NOW(), duration_ms = $2, error_message = 'Job execution timed out'
+        WHERE id = $1
+        "#,
+        run_id,
+        duration_ms
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Retrieves the most recent runs for a given job, ordered chronologically descending.
+pub async fn get_recent_runs(pool: &PgPool, job_name: &str, limit: i64) -> Result<Vec<JobRun>, JobError> {
+    let runs = sqlx::query_as!(
+        JobRun,
+        r#"
+        SELECT id, job_name, started_at, finished_at, status AS "status: JobRunStatus", error_message, duration_ms
+        FROM job_runs
+        WHERE job_name = $1
+        ORDER BY started_at DESC
+        LIMIT $2
+        "#,
+        job_name,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(runs)
+}
+
+/// Cleans up job run records older than the specified retention period.
+/// Returns the number of deleted records.
+pub async fn cleanup_old_runs(pool: &PgPool, retain_days: i64) -> Result<u64, JobError> {
+    let result = sqlx::query!(
+        r#"
+        DELETE FROM job_runs
+        WHERE started_at < NOW() - INTERVAL '1 day' * $1
+        "#,
+        retain_days as f64
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
