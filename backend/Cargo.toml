@@ -18,6 +18,7 @@ path = "src/bin/backup.rs"
 testutils = ["mockall"]
 
 [dependencies]
+url = { version = "2", features = ["serde"] }
 # Web framework
 axum = { version = "0.7", features = ["macros"] }
 tower = { version = "0.5", features = ["full", "util"] }

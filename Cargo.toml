@@ -7,7 +7,6 @@ members = [
     "examples/token",
     "examples/escrow",
     "examples/vesting",
-    "backend",
 ]
 resolver = "2"
 
