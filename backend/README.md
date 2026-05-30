@@ -337,6 +337,7 @@ The backend runs several background workers for system health and data consisten
 | Module | Description |
 |---|---|
 | `sys_metrics` | Build system metrics exporter with PostgreSQL persistence and Redis caching (compilation times, dependency counts, cache hit rates) |
+| `cache_metrics` | Cache operation analytics with PostgreSQL event storage and Redis-cached summaries |
 | `error_recovery` | Tracks retry state for failing tasks with configurable max retries |
 | `log_aggregator` | Async MPSC-based log pipeline; persists entries via a background worker |
 | `log_alerts` | Threshold-based alerting over the log pipeline with sliding-window evaluation |
@@ -428,6 +429,9 @@ All workers are designed to be production-ready with comprehensive error handlin
 | `GET` | `/api/v1/profiling/health` | Service health check (OpenAPI) |
 | `GET` | `/api/v1/dashboard/metrics` | Dashboard aggregated metrics with Redis caching |
 | `GET` | `/api/v1/dashboard/contracts/:contract_id/stats` | Contract-specific statistics |
+| `POST` | `/cache-metrics` | Record a cache operation metric |
+| `GET` | `/cache-metrics` | List recent cache operation metrics |
+| `GET` | `/cache-metrics/summary` | Cache hit/miss, latency, payload, and operation analytics |
 | `GET` | `/api/v1/profiling/prometheus` | Prometheus-compatible metrics |
 | `GET` | `/api/status` | System health summary and recovery status |
 | `POST` | `/api/profile` | Trigger a manual profiling collection run |
@@ -666,8 +670,73 @@ The distributed cron job scheduler guarantees single execution per tick across m
 ### Usage Example
 
 ```rust
-use crucible_backend::workers::scheduler::{Scheduler, JobDefinition};
-use crucible_backend::workers::jobs::{HealthCheckJob, CleanupJob};
+use backend::services::sys_metrics::{BuildMetricsService, BuildMetric, BuildStatus};
+use sqlx::PgPool;
+use redis::Client;
+
+let service = BuildMetricsService::new(pool, redis);
+
+// Record a build metric
+let metric = BuildMetric {
+    id: None,
+    project_name: "crucible".to_string(),
+    build_id: "build-123".to_string(),
+    build_status: BuildStatus::Success,
+    compilation_time_ms: 5000,
+    dependency_count: 42,
+    cache_hit_rate: Some(85.5),
+    cpu_usage: Some(75.2),
+    memory_usage_mb: Some(1024),
+    build_timestamp: Utc::now(),
+};
+service.record_build(metric).await?;
+
+// Get project metrics with caching
+let metrics = service.get_project_metrics("crucible", 10).await?;
+
+// Get aggregated summary
+let summary = service.get_project_summary("crucible").await?;
+println!("Success rate: {}%", summary.success_rate);
+```
+
+### API Reference
+
+#### BuildMetricsService
+
+- `new(db, redis)` - Create a new metrics service
+- `record_build(metric)` - Record a build metric (invalidates cache)
+- `get_project_metrics(project_name, limit)` - Get metrics for a project (with caching)
+- `get_project_summary(project_name)` - Get aggregated statistics
+- `get_recent_metrics(limit)` - Get recent builds across all projects
+- `delete_project_metrics(project_name)` - Delete all metrics for a project
+
+## Cache Metrics and Analytics
+
+The `cache_metrics` module records cache operations as durable PostgreSQL events and caches aggregate summaries in Redis with a short TTL.
+
+- `CacheMetricsService::record(input)` - Persist a cache operation and invalidate affected summaries
+- `CacheMetricsService::recent(query)` - Read bounded recent cache events
+- `CacheMetricsService::summary(query)` - Return hit/miss counts, hit rate, latency, payload totals, and operation breakdowns
+- `CacheMetricsService::ensure_schema()` - Create the table and indexes for tests or embedded deployments
+- `router(service)` - Build Axum routes for recording and reading cache analytics
+
+## Backup Service Configuration
+
+All configuration is via environment variables.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
+| `REDIS_URL` | No | `redis://127.0.0.1/` | Redis connection string |
+| `BACKUP_QUEUE` | No | `backup_jobs` | Redis list key for backup jobs |
+| `RESTORE_QUEUE` | No | `restore_jobs` | Redis list key for restore jobs |
+| `BIND_ADDR` | No | `0.0.0.0:8080` | HTTP server bind address |
+| `BACKUP_DIR` | No | `/var/backups/crucible` | Directory for `pg_dump` output files |
+## Configuration Hot-Reload
+
+`ConfigWatcher` holds the live `AppConfig` behind an `Arc<RwLock<_>>`. Any part of the application that holds a `ConfigHandle` sees new values immediately after a reload — no restart required.
+
+```rust
 use std::sync::Arc;
 
 let mut scheduler = Scheduler::new(pool.clone(), redis_client.clone());
