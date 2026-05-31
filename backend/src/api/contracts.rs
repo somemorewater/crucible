@@ -56,6 +56,9 @@ pub enum ApiError {
 
     #[error("Too many requests")]
     RateLimited,
+
+    #[error("Length required: {0}")]
+    LengthRequired(String),
 }
 
 impl ApiError {
@@ -71,6 +74,7 @@ impl ApiError {
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+            Self::LengthRequired(_) => StatusCode::LENGTH_REQUIRED,
         }
     }
 
@@ -86,6 +90,7 @@ impl ApiError {
             Self::Forbidden => "FORBIDDEN".to_string(),
             Self::Conflict(_) => "CONFLICT".to_string(),
             Self::RateLimited => "RATE_LIMITED".to_string(),
+            Self::LengthRequired(_) => "LENGTH_REQUIRED".to_string(),
         }
     }
 }
@@ -463,6 +468,9 @@ mod tests {
 
         let err = ApiError::Internal("oops".to_string());
         assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let err = ApiError::LengthRequired("length required".to_string());
+        assert_eq!(err.status_code(), StatusCode::LENGTH_REQUIRED);
     }
 
     #[test]

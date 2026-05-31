@@ -54,6 +54,10 @@ pub enum AppError {
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
+    /// 411 — The request must contain a Content-Length header.
+    #[error("Length required: {0}")]
+    LengthRequired(String),
+
     /// 409 — The request conflicts with the current state.
     #[error("Conflict: {0}")]
     Conflict(String),
@@ -166,6 +170,7 @@ impl IntoResponse for AppError {
                     "Failed to communicate with Stellar network".to_string(),
                 )
             }
+            AppError::LengthRequired(msg) => (StatusCode::LENGTH_REQUIRED, "length_required", msg.clone()),
         };
 
         (
@@ -205,6 +210,12 @@ mod tests {
     fn test_internal_error_display() {
         let err = AppError::InternalError("unexpected state".into());
         assert_eq!(err.to_string(), "Internal error: unexpected state");
+    }
+
+    #[test]
+    fn test_length_required_error_display() {
+        let err = AppError::LengthRequired("Content-Length header required".into());
+        assert_eq!(err.to_string(), "Length required: Content-Length header required");
     }
 
     #[test]
