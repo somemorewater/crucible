@@ -192,19 +192,33 @@ pub async fn get_system_status(State(state): State<Arc<AppState>>) -> ApiRespons
 /// Handler to trigger profile collection (CPU, memory profiling)
 #[instrument(skip_all, fields(http.method = "POST", http.route = "/api/profile"))]
 pub async fn trigger_profile_collection(
-    State(_state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>, 
     ValidatedJson(payload): ValidatedJson<ProfileTriggerRequest>,
-) -> ApiResponse<ProfileTriggerResponse> {
+) -> Result<ApiResponse<ProfileTriggerResponse>, AppError> {
     // In a real implementation, this would trigger a CPU/Memory profile
     // using the provided payload (duration, sample rate, etc.)
 
-    ApiResponse::new(ProfileTriggerResponse {
-        profile_id: uuid::Uuid::new_v4(),
-        message: format!(
-            "Profiling collection triggered for label: {}",
-            payload.label
-        ),
-        estimated_completion: chrono::Utc::now()
-            + chrono::Duration::seconds(payload.duration_secs as i64),
-    })
+    // Validate duration doesn't cause overflow in chrono::Duration (Issue #208)
+    // chrono::Duration::seconds() accepts i64, so we need to ensure payload.duration_secs <= i64::MAX
+    if payload.duration_secs > i64::MAX as u32 {
+        return Err(AppError::BadRequest(format!("Invalid duration_secs (Issue #208): too large for time calculation, maximum {}", i64::MAX)));
+    }
+    // Additional safety check for chrono::Duration::seconds() bounds
+    if payload.duration_secs > 2_147_483_647 {
+        return Err(AppError::BadRequest(format!("Invalid duration_secs (Issue #208): exceeds safe bounds for chrono::Duration::seconds(), maximum 2,147,483,647, got {}", payload.duration_secs)));
+    }
+
+    let profile_id = uuid::Uuid::new_v4();
+    let message = format!(
+        "Profiling collection triggered for label: {}",
+        payload.label
+    );
+    let estimated_completion = chrono::Utc::now()
+        + chrono::Duration::seconds(payload.duration_secs as i64);
+
+    Ok(ApiResponse::new(ProfileTriggerResponse {
+        profile_id,
+        message,
+        estimated_completion,
+    }))
 }
