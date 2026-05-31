@@ -8,9 +8,7 @@ use backend::api::handlers::dashboard::{
     get_contract_stats, get_dashboard_metrics, DashboardState,
 };
 use backend::services::{
-    error_recovery::ErrorManager,
-    log_alerts::AlertManager,
-    sys_metrics::MetricsExporter,
+    error_recovery::ErrorManager, log_alerts::AlertManager, sys_metrics::MetricsExporter,
 };
 use redis::Client as RedisClient;
 use sqlx::postgres::PgPoolOptions;

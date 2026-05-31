@@ -16,7 +16,11 @@
 //! # }
 //! ```
 
-use axum::{extract::{Path, State}, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    response::IntoResponse,
+    Json,
+};
 use chrono::{DateTime, Utc};
 use redis::{AsyncCommands, Client as RedisClient};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -174,7 +178,9 @@ pub async fn get_dashboard_metrics(
     match try_cache_get(&state.redis, "dashboard:metrics").await {
         Ok(Some(cached)) => return Ok(Json(cached)),
         Ok(None) => debug!("Dashboard metrics cache miss"),
-        Err(e) => warn!(error = %e, "Dashboard metrics cache read failed; falling back to live data"),
+        Err(e) => {
+            warn!(error = %e, "Dashboard metrics cache read failed; falling back to live data")
+        }
     }
 
     let total_contracts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contracts")
@@ -220,7 +226,9 @@ pub async fn get_contract_stats(
     match try_cache_get(&state.redis, &cache_key).await {
         Ok(Some(cached)) => return Ok(Json(cached)),
         Ok(None) => debug!(contract_id = %contract_id, "Contract stats cache miss"),
-        Err(e) => warn!(error = %e, contract_id = %contract_id, "Contract stats cache read failed; falling back to live data"),
+        Err(e) => {
+            warn!(error = %e, contract_id = %contract_id, "Contract stats cache read failed; falling back to live data")
+        }
     }
 
     let exists: Option<i32> = sqlx::query_scalar("SELECT 1 FROM contracts WHERE contract_id = $1")
@@ -272,11 +280,7 @@ where
     }
 }
 
-async fn try_cache_set<T>(
-    redis: &RedisClient,
-    key: &str,
-    data: &T,
-) -> Result<(), DashboardError>
+async fn try_cache_set<T>(redis: &RedisClient, key: &str, data: &T) -> Result<(), DashboardError>
 where
     T: Serialize,
 {

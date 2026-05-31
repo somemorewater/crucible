@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 use backend::api::handlers::dashboard::{get_dashboard, DashboardState};
+use backend::api::handlers::ws::{ws_dashboard_handler, WsState};
 use backend::{
     api::handlers::{dashboard, errors, profiling, stellar},
     api::middleware::logging::logging_middleware,
@@ -125,6 +126,12 @@ async fn main() -> Result<(), anyhow::Error> {
         redis: redis_client.clone(),
     });
 
+    // Create WebSocket state (shares Arc references from AppState)
+    let ws_state = Arc::new(WsState {
+        metrics_exporter: state.metrics_exporter.clone(),
+        error_manager: state.error_manager.clone(),
+    });
+
     // OpenAPI docs
     #[derive(OpenApi)]
     #[openapi(
@@ -181,6 +188,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .nest(
             "/api/v1/contracts",
             Router::new()
+                .route(
+                    "/compile",
+                    post(backend::api::handlers::contracts::compile_contract),
+                )
+                .route(
+                    "/analyze-dependencies",
+                    post(backend::api::handlers::contracts::analyze_dependencies),
+                )
                 .route("/compile", post(backend::api::handlers::contracts::compile_contract))
                 .route("/analyze-dependencies", post(backend::api::handlers::contracts::analyze_dependencies))
                 .route("/compliance-check", post(backend::api::handlers::contracts::check_compliance))
@@ -189,7 +204,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 .route("/templates", get(backend::api::handlers::contracts::get_templates))
                 .with_state(state.clone()),
         )
-        .route("/api/v1/networks", get(backend::api::handlers::contracts::get_networks))
+        .route(
+            "/api/v1/networks",
+            get(backend::api::handlers::contracts::get_networks),
+        )
         .nest(
             "/api/v1/admin",
             Router::new()
@@ -201,6 +219,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .nest(
             "/api/v1/errors",
             errors::error_analytics_routes(db_pool.clone(), redis_conn_dashboard.clone()),
+        )
+        .route(
+            "/api/v1/ws/dashboard",
+            get(ws_dashboard_handler).with_state(ws_state),
         )
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(middleware::from_fn_with_state(

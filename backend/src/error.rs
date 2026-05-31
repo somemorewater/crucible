@@ -170,7 +170,9 @@ impl IntoResponse for AppError {
                     "Failed to communicate with Stellar network".to_string(),
                 )
             }
-            AppError::LengthRequired(msg) => (StatusCode::LENGTH_REQUIRED, "length_required", msg.clone()),
+            AppError::LengthRequired(msg) => {
+                (StatusCode::LENGTH_REQUIRED, "length_required", msg.clone())
+            }
         };
 
         (
@@ -215,7 +217,10 @@ mod tests {
     #[test]
     fn test_length_required_error_display() {
         let err = AppError::LengthRequired("Content-Length header required".into());
-        assert_eq!(err.to_string(), "Length required: Content-Length header required");
+        assert_eq!(
+            err.to_string(),
+            "Length required: Content-Length header required"
+        );
     }
 
     #[test]

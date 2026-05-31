@@ -27,11 +27,16 @@ impl DependencyAnalyzer {
         Self { db }
     }
 
-    pub async fn analyze(&self, cargo_toml_content: &str) -> Result<DependencyAnalysis, sqlx::Error> {
+    pub async fn analyze(
+        &self,
+        cargo_toml_content: &str,
+    ) -> Result<DependencyAnalysis, sqlx::Error> {
         let mut dependencies = Vec::new();
         let mut cycles_detected = false;
-        
-        if cargo_toml_content.contains("CYCLE_DETECTION_TEST") || cargo_toml_content.contains("dependency_a -> dependency_b -> dependency_a") {
+
+        if cargo_toml_content.contains("CYCLE_DETECTION_TEST")
+            || cargo_toml_content.contains("dependency_a -> dependency_b -> dependency_a")
+        {
             cycles_detected = true;
         }
 
@@ -43,7 +48,10 @@ impl DependencyAnalyzer {
                 continue;
             }
 
-            if line.starts_with("[dependencies]") || line.starts_with("[dev-dependencies]") || line.starts_with("[workspace.dependencies]") {
+            if line.starts_with("[dependencies]")
+                || line.starts_with("[dev-dependencies]")
+                || line.starts_with("[workspace.dependencies]")
+            {
                 in_dependencies = true;
                 continue;
             } else if line.starts_with('[') {
@@ -79,7 +87,10 @@ impl DependencyAnalyzer {
 
                     let status = if name == "soroban-sdk" && version.starts_with('2') {
                         "up-to-date".to_string()
-                    } else if version.contains("vulnerable") || name.contains("vulnerable") || cargo_toml_content.contains("VULNERABLE_TEST") {
+                    } else if version.contains("vulnerable")
+                        || name.contains("vulnerable")
+                        || cargo_toml_content.contains("VULNERABLE_TEST")
+                    {
                         "vulnerable".to_string()
                     } else {
                         "outdated".to_string()
@@ -133,7 +144,10 @@ impl DependencyAnalyzer {
             });
         }
 
-        let vulnerability_count = dependencies.iter().filter(|d| d.status == "vulnerable").count();
+        let vulnerability_count = dependencies
+            .iter()
+            .filter(|d| d.status == "vulnerable")
+            .count();
 
         Ok(DependencyAnalysis {
             dependencies,

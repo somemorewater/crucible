@@ -1,8 +1,8 @@
-use std::time::Instant;
-use sqlx::PgPool;
-use uuid::Uuid;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::time::Instant;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CompilationResult {
@@ -31,7 +31,9 @@ impl CompilationService {
         let start = Instant::now();
         let build_id = Uuid::new_v4().to_string();
 
-        let has_error = source_code.contains("COMPILE_ERROR") || source_code.contains("error:") || source_code.contains("fn main() { fn }");
+        let has_error = source_code.contains("COMPILE_ERROR")
+            || source_code.contains("error:")
+            || source_code.contains("fn main() { fn }");
         let status = if has_error {
             "failed".to_string()
         } else {
@@ -57,7 +59,7 @@ impl CompilationService {
         };
 
         let wasm_hash = if status == "success" {
-            use sha2::{Sha256, Digest};
+            use sha2::{Digest, Sha256};
             let mut hasher = Sha256::new();
             hasher.update(source_code.as_bytes());
             format!("{:x}", hasher.finalize())
@@ -88,7 +90,7 @@ impl CompilationService {
                 cpu_usage,
                 memory_usage_mb,
                 build_timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(project_name)
         .bind(&build_id)

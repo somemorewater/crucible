@@ -4,7 +4,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use backend::api::handlers::contracts::{compile_contract, analyze_dependencies, get_networks};
+use backend::api::handlers::contracts::{analyze_dependencies, compile_contract, get_networks};
 use backend::api::handlers::profiling::AppState;
 use backend::config::reload::ConfigManager;
 use backend::config::AppConfig;
@@ -74,7 +74,10 @@ async fn test_compile_endpoint_success() {
 async fn test_analyze_endpoint_success() {
     let state = get_mock_state();
     let app = Router::new()
-        .route("/api/v1/contracts/analyze-dependencies", post(analyze_dependencies))
+        .route(
+            "/api/v1/contracts/analyze-dependencies",
+            post(analyze_dependencies),
+        )
         .with_state(state);
 
     let response = app
