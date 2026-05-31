@@ -196,6 +196,12 @@ async fn main() -> Result<(), anyhow::Error> {
                     "/analyze-dependencies",
                     post(backend::api::handlers::contracts::analyze_dependencies),
                 )
+                .with_state(state.clone()),
+        )
+        .route(
+            "/api/v1/networks",
+            get(backend::api::handlers::contracts::get_networks),
+        )
                 .route("/compile", post(backend::api::handlers::contracts::compile_contract))
                 .route("/analyze-dependencies", post(backend::api::handlers::contracts::analyze_dependencies))
                 .route("/compliance-check", post(backend::api::handlers::contracts::check_compliance))
