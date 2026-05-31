@@ -25,7 +25,7 @@ pub struct DatabaseConfig {
 }
 
 impl fmt::Debug for DatabaseConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Formatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DatabaseConfig")
             .field("url", &"[REDACTED]")
             .field("max_connections", &self.max_connections)

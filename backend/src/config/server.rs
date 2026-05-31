@@ -22,7 +22,7 @@ pub struct ServerConfig {
 }
 
 impl fmt::Debug for ServerConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Formatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ServerConfig")
             .field("host", &self.host)
             .field("port", &self.port)
@@ -44,7 +44,7 @@ pub struct TlsConfig {
 }
 
 impl fmt::Debug for TlsConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Formatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TlsConfig")
             .field("cert_path", &self.cert_path)
             .field("key_path", &"[REDACTED]")

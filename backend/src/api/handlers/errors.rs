@@ -25,11 +25,18 @@ pub struct BuildErrorDetail {
     pub occurred_at: chrono::NaiveDateTime,
 }
 
-#[instrument(skip(pool, redis))]
+#[derive(Clone)]
+pub struct ErrorAnalyticsState {
+    pub pool: PgPool,
+    pub redis: redis::Client,
+}
+
+#[instrument(skip(state))]
 pub async fn get_build_error_analytics(
-    State(pool): State<PgPool>,
-    State(redis): State<redis::Client>,
+    State(state): State<ErrorAnalyticsState>,
 ) -> Result<impl IntoResponse, AppError> {
+    let pool = state.pool;
+    let redis = state.redis;
     // Try cache first
     let mut redis_conn = redis.get_async_connection().await.map_err(AppError::from)?;
     if let Ok(cached) = redis_conn.get::<_, String>("build_error_analytics").await {
@@ -61,20 +68,21 @@ pub async fn get_build_error_analytics(
     };
 
     // Cache result
-    let _ = redis_conn
-        .set_ex(
+    let _: () = redis_conn
+        .set_ex::<_, _, ()>(
             "build_error_analytics",
             serde_json::to_string(&analytics).unwrap(),
             60,
         )
-        .await;
+        .await
+        .map_err(AppError::from)?;
 
     Ok(Json(analytics))
 }
 
 pub fn error_analytics_routes(pool: PgPool, redis: redis::Client) -> Router {
+    let state = ErrorAnalyticsState { pool, redis };
     Router::new()
         .route("/dashboard/build-errors", get(get_build_error_analytics))
-        .with_state(pool)
-        .with_state(redis)
+        .with_state(state)
 }

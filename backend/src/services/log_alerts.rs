@@ -40,7 +40,7 @@ pub struct ServiceState {
     pub redis: redis::Client,
 }
 
-pub fn router() -> Router {
+pub fn router() -> Router<Arc<ServiceState>> {
     Router::new()
         .route("/rules", post(create_rule).get(list_rules))
         .route("/rules/:id", get(get_rule))
@@ -88,14 +88,14 @@ async fn get_rule(
 }
 
 #[derive(Debug, Deserialize)]
-pub struct LogEntry {
+pub struct IngestLogRequest {
     pub message: String,
     pub level: String,
 }
 
 async fn ingest_log(
     State(state): State<Arc<ServiceState>>,
-    Json(log): Json<LogEntry>,
+    Json(log): Json<IngestLogRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     tracing::info!("Processing log: {}", log.message);
 

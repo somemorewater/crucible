@@ -31,7 +31,7 @@ impl JobHandler for HealthCheckJob {
             .await
             .map_err(JobError::RedisError)?;
         redis::cmd("PING")
-            .query_async::<_, String>(&mut redis_conn)
+            .query_async::<String>(&mut redis_conn)
             .await
             .map_err(JobError::RedisError)?;
         info!("Redis connection is healthy");

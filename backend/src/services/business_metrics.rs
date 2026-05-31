@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -12,10 +12,11 @@ use crate::error::AppError;
 
 // ─── Domain Types ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BusinessMetric {
     pub id: Uuid,
     pub name: String,
+    #[schema(value_type = f64)]
     pub value: Decimal,
     pub unit: String,
     pub category: MetricCategory,
@@ -24,7 +25,36 @@ pub struct BusinessMetric {
     pub source: MetricSource,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+impl BusinessMetric {
+    pub fn from_row(row: &sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        let id: Uuid = row.try_get("id")?;
+        let name: String = row.try_get("name")?;
+        let value: Decimal = row.try_get("value")?;
+        let unit: String = row.try_get("unit")?;
+        let category_str: String = row.try_get("category")?;
+        let tags_val: serde_json::Value = row.try_get("tags")?;
+        let recorded_at: DateTime<Utc> = row.try_get("recorded_at")?;
+        let source_str: String = row.try_get("source")?;
+
+        let tags: HashMap<String, String> = serde_json::from_value(tags_val)
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        let category = MetricCategory::from_str(&category_str);
+        let source = MetricSource::from_str(&source_str);
+
+        Ok(Self {
+            id,
+            name,
+            value,
+            unit,
+            category,
+            tags,
+            recorded_at,
+            source,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MetricCategory {
     Revenue,
@@ -35,14 +65,67 @@ pub enum MetricCategory {
     Custom(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+impl MetricCategory {
+    pub fn as_str(&self) -> String {
+        match self {
+            Self::Revenue => "revenue".to_string(),
+            Self::Costs => "costs".to_string(),
+            Self::Users => "users".to_string(),
+            Self::Transactions => "transactions".to_string(),
+            Self::Performance => "performance".to_string(),
+            Self::Custom(s) => s.clone(),
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "revenue" => Self::Revenue,
+            "costs" => Self::Costs,
+            "users" => Self::Users,
+            "transactions" => Self::Transactions,
+            "performance" => Self::Performance,
+            other => Self::Custom(other.to_string()),
+        }
+    }
+}
+
+impl Default for MetricCategory {
+    fn default() -> Self {
+        Self::Performance
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MetricSource {
     OnChain,
     OffChain,
     Database,
     ExternalApi,
+    #[default]
     Manual,
+}
+
+impl MetricSource {
+    pub fn as_str(&self) -> String {
+        match self {
+            Self::OnChain => "on_chain".to_string(),
+            Self::OffChain => "off_chain".to_string(),
+            Self::Database => "database".to_string(),
+            Self::ExternalApi => "external_api".to_string(),
+            Self::Manual => "manual".to_string(),
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "on_chain" => Self::OnChain,
+            "off_chain" => Self::OffChain,
+            "database" => Self::Database,
+            "external_api" => Self::ExternalApi,
+            _ => Self::Manual,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,7 +144,7 @@ pub struct MetricsQuery {
     pub offset: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct MetricsSummary {
     pub total_metrics: i64,
     pub categories: HashMap<String, i64>,
@@ -84,37 +167,34 @@ impl BusinessMetricsService {
     }
 
     /// Record a new business metric with the given parameters.
-    #[instrument(skip(self), fields(metric_name = %name))]
+    #[instrument(skip(self, name, unit))]
     pub async fn record_metric(
         &self,
-        name: impl Into<String>,
+        name: String,
         value: Decimal,
-        unit: impl Into<String>,
+        unit: String,
         category: MetricCategory,
         tags: HashMap<String, String>,
         source: MetricSource,
     ) -> Result<BusinessMetric, AppError> {
         let id = Uuid::new_v4();
         let now = Utc::now();
-        let name = name.into();
-        let unit = unit.into();
 
-        sqlx::query_as!(
-            BusinessMetric,
+        let row = sqlx::query(
             r#"
             INSERT INTO business_metrics (id, name, value, unit, category, tags, recorded_at, source)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, name, value, unit, category as "category: _", tags as "tags: _", recorded_at, source as "source: _"
+            RETURNING id, name, value, unit, category, tags, recorded_at, source
             "#,
-            id,
-            name,
-            value,
-            unit,
-            category as MetricCategory,
-            serde_json::to_value(&tags)?,
-            now,
-            source as MetricSource,
         )
+        .bind(id)
+        .bind(&name)
+        .bind(value)
+        .bind(&unit)
+        .bind(category.as_str())
+        .bind(serde_json::to_value(&tags)?)
+        .bind(now)
+        .bind(source.as_str())
         .fetch_one(&self.db)
         .await
         .map_err(|e| {
@@ -122,16 +202,7 @@ impl BusinessMetricsService {
             AppError::Database(e)
         })?;
 
-        let metric = BusinessMetric {
-            id,
-            name,
-            value,
-            unit,
-            category,
-            tags,
-            recorded_at: now,
-            source,
-        };
+        let metric = BusinessMetric::from_row(&row)?;
 
         // Update in-memory cache
         {
@@ -174,19 +245,20 @@ impl BusinessMetricsService {
         for (name, value, unit, category, tags, source) in metrics {
             let id = Uuid::new_v4();
 
-            sqlx::query!(
+            sqlx::query(
                 r#"
                 INSERT INTO business_metrics (id, name, value, unit, category, tags, recorded_at, source)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 "#,
-                id,
-                name,
-                value,
-                unit,
-                serde_json::to_value(&tags)?,
-                now,
-                source as MetricSource,
             )
+            .bind(id)
+            .bind(&name)
+            .bind(value)
+            .bind(&unit)
+            .bind(category.as_str())
+            .bind(serde_json::to_value(&tags)?)
+            .bind(now)
+            .bind(source.as_str())
             .execute(&mut *tx)
             .await
             .map_err(|e| {
@@ -224,27 +296,31 @@ impl BusinessMetricsService {
         let limit = query.limit.unwrap_or(100);
         let offset = query.offset.unwrap_or(0);
 
-        let total =
-            sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM business_metrics WHERE 1=1"#)
+        let count_row =
+            sqlx::query(r#"SELECT COUNT(*) as "count" FROM business_metrics"#)
                 .fetch_one(&self.db)
                 .await
-                .map_err(|e| AppError::Database(e))?
-                .unwrap_or(0);
+                .map_err(|e| AppError::Database(e))?;
+        let total: i64 = count_row.try_get("count")?;
 
-        let metrics = sqlx::query_as!(
-            BusinessMetric,
+        let rows = sqlx::query(
             r#"
-            SELECT id, name, value, unit, category as "category: _", tags as "tags: _", recorded_at, source as "source: _"
+            SELECT id, name, value, unit, category, tags, recorded_at, source
             FROM business_metrics
             ORDER BY recorded_at DESC
             LIMIT $1 OFFSET $2
             "#,
-            limit,
-            offset,
         )
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.db)
         .await
         .map_err(|e| AppError::Database(e))?;
+
+        let mut metrics = Vec::with_capacity(rows.len());
+        for row in rows {
+            metrics.push(BusinessMetric::from_row(&row)?);
+        }
 
         Ok((metrics, total))
     }
@@ -252,21 +328,22 @@ impl BusinessMetricsService {
     /// Get aggregated metrics summary.
     #[instrument(skip(self))]
     pub async fn get_metrics_summary(&self) -> Result<MetricsSummary, AppError> {
-        let total: i64 =
-            sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM business_metrics"#)
-                .fetch_one(&self.db)
-                .await
-                .map_err(|e| AppError::Database(e))?
-                .unwrap_or(0);
-
-        let latest: Option<DateTime<Utc>> =
-            sqlx::query_scalar!(r#"SELECT MAX(recorded_at) as "max!" FROM business_metrics"#)
+        let count_row =
+            sqlx::query(r#"SELECT COUNT(*) as "count" FROM business_metrics"#)
                 .fetch_one(&self.db)
                 .await
                 .map_err(|e| AppError::Database(e))?;
+        let total: i64 = count_row.try_get("count")?;
 
-        let rows = sqlx::query!(
-            r#"SELECT category as "category!: MetricCategory", COUNT(*) as "count!: i64" FROM business_metrics GROUP BY category"#
+        let max_row =
+            sqlx::query(r#"SELECT MAX(recorded_at) as "max" FROM business_metrics"#)
+                .fetch_one(&self.db)
+                .await
+                .map_err(|e| AppError::Database(e))?;
+        let latest: Option<DateTime<Utc>> = max_row.try_get("max")?;
+
+        let rows = sqlx::query(
+            r#"SELECT category, COUNT(*) as "count" FROM business_metrics GROUP BY category"#
         )
         .fetch_all(&self.db)
         .await
@@ -274,11 +351,9 @@ impl BusinessMetricsService {
 
         let mut categories = HashMap::new();
         for row in rows {
-            let key = match row.category {
-                MetricCategory::Custom(s) => s,
-                other => format!("{:?}", other).to_lowercase(),
-            };
-            categories.insert(key, row.count);
+            let category_str: String = row.try_get("category")?;
+            let count: i64 = row.try_get("count")?;
+            categories.insert(category_str, count);
         }
 
         Ok(MetricsSummary {
@@ -296,16 +371,17 @@ impl BusinessMetricsService {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     ) -> Result<Option<Decimal>, AppError> {
-        let result = sqlx::query_scalar!(
-            r#"SELECT SUM(value) as "sum!: Decimal" FROM business_metrics WHERE name = $1 AND recorded_at >= $2 AND recorded_at <= $3"#,
-            name,
-            from,
-            to,
+        let row = sqlx::query(
+            r#"SELECT SUM(value) as "sum" FROM business_metrics WHERE name = $1 AND recorded_at >= $2 AND recorded_at <= $3"#,
         )
+        .bind(name)
+        .bind(from)
+        .bind(to)
         .fetch_one(&self.db)
         .await
         .map_err(|e| AppError::Database(e))?;
 
+        let result: Option<Decimal> = row.try_get("sum")?;
         Ok(result)
     }
 
@@ -323,22 +399,25 @@ impl BusinessMetricsService {
         }
 
         // Fall back to database
-        let metric = sqlx::query_as!(
-            BusinessMetric,
+        let row = sqlx::query(
             r#"
-            SELECT id, name, value, unit, category as "category: _", tags as "tags: _", recorded_at, source as "source: _"
+            SELECT id, name, value, unit, category, tags, recorded_at, source
             FROM business_metrics
             WHERE name = $1
             ORDER BY recorded_at DESC
             LIMIT 1
             "#,
-            name,
         )
+        .bind(name)
         .fetch_optional(&self.db)
         .await
         .map_err(|e| AppError::Database(e))?;
 
-        Ok(metric)
+        if let Some(r) = row {
+            Ok(Some(BusinessMetric::from_row(&r)?))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Remove metrics older than the retention period.
@@ -346,10 +425,10 @@ impl BusinessMetricsService {
     pub async fn prune_old_metrics(&self, retention_days: i64) -> Result<u64, AppError> {
         let cutoff = Utc::now() - Duration::days(retention_days);
 
-        let deleted = sqlx::query!(
+        let deleted = sqlx::query(
             r#"DELETE FROM business_metrics WHERE recorded_at < $1"#,
-            cutoff,
         )
+        .bind(cutoff)
         .execute(&self.db)
         .await
         .map_err(|e| AppError::Database(e))?
@@ -368,9 +447,10 @@ pub struct MetricsState {
     pub service: Arc<BusinessMetricsService>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct RecordMetricRequest {
     pub name: String,
+    #[schema(value_type = f64)]
     pub value: Decimal,
     pub unit: String,
     pub category: MetricCategory,

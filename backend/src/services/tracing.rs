@@ -12,12 +12,6 @@
 //! - Span limits and baggage propagation
 //! - Zero-overhead when tracing is disabled
 
-use opentelemetry::trace::TracerProvider as _;
-use opentelemetry::KeyValue;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::trace::{Config, RandomIdGenerator, Sampler, TracerProvider};
-use opentelemetry_sdk::Resource;
-use opentelemetry_semantic_conventions::resource;
 use std::time::Duration;
 use tracing::{info_span, warn};
 use tracing_subscriber::layer::SubscriberExt;
@@ -99,62 +93,19 @@ impl TracingConfig {
 impl TracingService {
     /// Initialize the global tracer provider with OTLP exporter
     pub fn init(config: TracingConfig) -> anyhow::Result<()> {
-        let resource = Resource::builder()
-            .with_attributes(vec![
-                KeyValue::new(resource::SERVICE_NAME, config.service_name.clone()),
-                KeyValue::new(resource::SERVICE_VERSION, config.service_version.clone()),
-                KeyValue::new(resource::DEPLOYMENT_ENVIRONMENT, config.environment.clone()),
-                KeyValue::new("service.namespace", "crucible"),
-            ])
-            .build();
-
-        let sampler = if config.environment == "production" {
-            Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(config.sampling_ratio)))
-        } else {
-            Sampler::AlwaysOn
-        };
-
-        let trace_config = Config::default()
-            .with_resource(resource)
-            .with_sampler(sampler)
-            .with_id_generator(RandomIdGenerator::default())
-            .with_max_attributes_per_span(config.max_attributes_per_span as u32)
-            .with_max_events_per_span(config.max_events_per_span as u32)
-            .with_max_links_per_span(config.max_links_per_span as u32);
-
-        let tracer_provider = opentelemetry_otlp::new_pipeline()
-            .tracing()
-            .with_exporter(
-                opentelemetry_otlp::new_exporter()
-                    .tonic()
-                    .with_endpoint(&config.otlp_endpoint)
-                    .with_timeout(Duration::from_secs(10)),
-            )
-            .with_trace_config(trace_config)
-            .install_batch(opentelemetry_sdk::runtime::Tokio)
-            .map_err(|e| anyhow::anyhow!("Failed to install OTLP exporter: {}", e))?;
-
-        // Get a tracer from the provider
-        let tracer = tracer_provider.tracer("crucible-backend");
-
-        let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
         let subscriber = Registry::default()
             .with(
                 EnvFilter::try_from_default_env()
                     .unwrap_or_else(|_| EnvFilter::new("info,crucible=debug")),
             )
-            .with(telemetry_layer)
             .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr));
 
         tracing::subscriber::set_global_default(subscriber)
             .map_err(|e| anyhow::anyhow!("Failed to set global subscriber: {}", e))?;
 
-        tracing::info!("OpenTelemetry tracing initialized successfully");
+        tracing::info!("Console tracing initialized successfully");
         tracing::info!("Service: {}", config.service_name);
         tracing::info!("Environment: {}", config.environment);
-        tracing::info!("OTLP Endpoint: {}", config.otlp_endpoint);
-        tracing::info!("Sampling Ratio: {:.1}%", config.sampling_ratio * 100.0);
 
         Ok(())
     }

@@ -268,7 +268,7 @@ impl BuildMetricsService {
 
         // Cache miss – query database
         debug!(project = %project_name, "Build metrics cache miss – querying database");
-        let rows = sqlx::query_as(
+        let rows = sqlx::query(
             r#"
             SELECT id, project_name, build_id, build_status, compilation_time_ms,
                    dependency_count, cache_hit_rate, cpu_usage, memory_usage_mb, build_timestamp
@@ -285,34 +285,32 @@ impl BuildMetricsService {
 
         let metrics: Vec<BuildMetric> = rows
             .into_iter()
-            .map(
-                |(
-                    id,
+            .map(|row| {
+                use sqlx::Row;
+                let id: Uuid = row.get("id");
+                let project_name: String = row.get("project_name");
+                let build_id: String = row.get("build_id");
+                let status_str: String = row.get("build_status");
+                let compilation_time_ms: i64 = row.get("compilation_time_ms");
+                let dependency_count: i32 = row.get("dependency_count");
+                let cache_hit_rate: Option<Decimal> = row.get("cache_hit_rate");
+                let cpu_usage: Option<Decimal> = row.get("cpu_usage");
+                let memory_usage_mb: Option<i64> = row.get("memory_usage_mb");
+                let build_timestamp: DateTime<Utc> = row.get("build_timestamp");
+
+                BuildMetric {
+                    id: Some(id),
                     project_name,
                     build_id,
-                    status_str,
+                    build_status: BuildStatus::from_str(&status_str).unwrap_or(BuildStatus::Failed),
                     compilation_time_ms,
                     dependency_count,
                     cache_hit_rate,
                     cpu_usage,
                     memory_usage_mb,
                     build_timestamp,
-                )| {
-                    BuildMetric {
-                        id: Some(id),
-                        project_name,
-                        build_id,
-                        build_status: BuildStatus::from_str(&status_str)
-                            .unwrap_or(BuildStatus::Failed),
-                        compilation_time_ms,
-                        dependency_count,
-                        cache_hit_rate,
-                        cpu_usage,
-                        memory_usage_mb,
-                        build_timestamp,
-                    }
-                },
-            )
+                }
+            })
             .collect();
 
         // Populate cache with 5-minute TTL
@@ -390,7 +388,7 @@ impl BuildMetricsService {
     /// # Errors
     /// Returns [`MetricsError::Database`] if the database query fails.
     pub async fn get_recent_metrics(&self, limit: i64) -> Result<Vec<BuildMetric>, MetricsError> {
-        let rows = sqlx::query_as(
+        let rows = sqlx::query(
             r#"
             SELECT id, project_name, build_id, build_status, compilation_time_ms,
                    dependency_count, cache_hit_rate, cpu_usage, memory_usage_mb, build_timestamp
@@ -405,34 +403,32 @@ impl BuildMetricsService {
 
         Ok(rows
             .into_iter()
-            .map(
-                |(
-                    id,
+            .map(|row| {
+                use sqlx::Row;
+                let id: Uuid = row.get("id");
+                let project_name: String = row.get("project_name");
+                let build_id: String = row.get("build_id");
+                let status_str: String = row.get("build_status");
+                let compilation_time_ms: i64 = row.get("compilation_time_ms");
+                let dependency_count: i32 = row.get("dependency_count");
+                let cache_hit_rate: Option<Decimal> = row.get("cache_hit_rate");
+                let cpu_usage: Option<Decimal> = row.get("cpu_usage");
+                let memory_usage_mb: Option<i64> = row.get("memory_usage_mb");
+                let build_timestamp: DateTime<Utc> = row.get("build_timestamp");
+
+                BuildMetric {
+                    id: Some(id),
                     project_name,
                     build_id,
-                    status_str,
+                    build_status: BuildStatus::from_str(&status_str).unwrap_or(BuildStatus::Failed),
                     compilation_time_ms,
                     dependency_count,
                     cache_hit_rate,
                     cpu_usage,
                     memory_usage_mb,
                     build_timestamp,
-                )| {
-                    BuildMetric {
-                        id: Some(id),
-                        project_name,
-                        build_id,
-                        build_status: BuildStatus::from_str(&status_str)
-                            .unwrap_or(BuildStatus::Failed),
-                        compilation_time_ms,
-                        dependency_count,
-                        cache_hit_rate,
-                        cpu_usage,
-                        memory_usage_mb,
-                        build_timestamp,
-                    }
-                },
-            )
+                }
+            })
             .collect())
     }
 
@@ -472,8 +468,8 @@ impl BuildMetricsService {
             .await?;
 
         if !keys.is_empty() {
-            for key in keys {
-                let _: () = conn.del(&key).await?;
+            for key in &keys {
+                let _: () = conn.del(key).await?;
             }
             debug!(project = %project_name, count = keys.len(), "Invalidated project cache");
         }

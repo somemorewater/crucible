@@ -70,10 +70,10 @@ impl WorkerHealthMonitor {
 
                         // Store updated health status
                         redis_conn
-                            .set_ex(
+                            .set_ex::<_, _, ()>(
                                 &key,
                                 serde_json::to_string(&health)?,
-                                self.health_ttl.as_secs() as usize,
+                                self.health_ttl.as_secs(),
                             )
                             .await?;
 
@@ -110,10 +110,10 @@ impl WorkerHealthMonitor {
         };
 
         redis_conn
-            .set_ex(
+            .set_ex::<_, _, ()>(
                 &key,
                 serde_json::to_string(&health)?,
-                self.health_ttl.as_secs() as usize,
+                self.health_ttl.as_secs(),
             )
             .await?;
 
@@ -144,28 +144,41 @@ impl WorkerHealthMonitor {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WorkerHealth {
     pub worker_id: String,
+    #[serde(with = "instant_serde")]
     pub last_heartbeat: std::time::Instant,
+    #[serde(with = "instant_serde")]
     pub last_checked: std::time::Instant,
     pub is_healthy: bool,
     pub uptime_seconds: u64,
 }
 
-// Implement custom serialization for Instant
-impl Serialize for std::time::Instant {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.elapsed().as_secs().to_string())
-    }
-}
+mod instant_serde {
+    use serde::{self, Deserialize, Serializer, Deserializer};
+    use std::time::{Instant, Duration};
 
-impl<'de> Deserialize<'de> for std::time::Instant {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    pub fn serialize<S>(instant: &Instant, serializer: S) -> Result<S::Ok, S::Error>
     where
-        D: serde::Deserializer<'de>,
+        S: Serializer,
     {
-        let secs: u64 = serde::Deserialize::deserialize(deserializer)?;
-        Ok(std::time::Instant::now() - std::time::Duration::from_secs(secs))
+        serializer.serialize_str(&instant.elapsed().as_secs().to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Instant, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum StringOrU64 {
+            Str(String),
+            Num(u64),
+        }
+
+        let val = StringOrU64::deserialize(deserializer)?;
+        let secs = match val {
+            StringOrU64::Str(s) => s.parse::<u64>().map_err(serde::de::Error::custom)?,
+            StringOrU64::Num(n) => n,
+        };
+        Ok(Instant::now() - Duration::from_secs(secs))
     }
 }

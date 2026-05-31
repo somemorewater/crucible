@@ -457,7 +457,7 @@ impl BuildDedupService {
         )
         .key(lock_key)
         .arg(request_id.to_string())
-        .invoke_async::<_, i32>(&mut conn)
+        .invoke_async::<i32>(&mut conn)
         .await?;
         Ok(())
     }

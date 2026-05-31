@@ -23,7 +23,7 @@ pub enum ConfigError {
 impl std::error::Error for ConfigError {}
 
 impl fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Formatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ConfigError::MissingRequiredField(field) => {
                 write!(f, "Missing required configuration field: {}", field)

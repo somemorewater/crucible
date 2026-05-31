@@ -196,11 +196,25 @@ async fn main() -> Result<(), anyhow::Error> {
                     "/analyze-dependencies",
                     post(backend::api::handlers::contracts::analyze_dependencies),
                 )
+                .route("/compile", post(backend::api::handlers::contracts::compile_contract))
+                .route("/analyze-dependencies", post(backend::api::handlers::contracts::analyze_dependencies))
+                .route("/compliance-check", post(backend::api::handlers::contracts::check_compliance))
+                .route("/logs", post(backend::api::handlers::contracts::log_contract_call))
+                .route("/logs", get(backend::api::handlers::contracts::get_contract_logs))
+                .route("/templates", get(backend::api::handlers::contracts::get_templates))
                 .with_state(state.clone()),
         )
         .route(
             "/api/v1/networks",
             get(backend::api::handlers::contracts::get_networks),
+        )
+        .nest(
+            "/api/v1/admin",
+            Router::new()
+                .route("/system-stats", get(backend::api::handlers::admin::get_system_stats))
+                .route("/maintenance", post(backend::api::handlers::admin::set_maintenance_mode))
+                .route("/logs", get(backend::api::handlers::admin::get_admin_logs))
+                .with_state(state.clone()),
         )
         .nest(
             "/api/v1/errors",

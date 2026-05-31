@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Type};
+use sqlx::{PgPool, Row, Type};
 use uuid::Uuid;
 
 use crate::workers::error::JobError;
@@ -18,6 +18,26 @@ pub enum JobRunStatus {
     TimedOut,
 }
 
+impl JobRunStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::TimedOut => "timed_out",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "running" => Self::Running,
+            "succeeded" => Self::Succeeded,
+            "failed" => Self::Failed,
+            _ => Self::TimedOut,
+        }
+    }
+}
+
 /// Represents a single execution of a scheduled job.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobRun {
@@ -30,18 +50,40 @@ pub struct JobRun {
     pub duration_ms: Option<i64>,
 }
 
+impl JobRun {
+    pub fn from_row(row: &sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        let id: Uuid = row.try_get("id")?;
+        let job_name: String = row.try_get("job_name")?;
+        let started_at: DateTime<Utc> = row.try_get("started_at")?;
+        let finished_at: Option<DateTime<Utc>> = row.try_get("finished_at")?;
+        let status_str: String = row.try_get("status")?;
+        let error_message: Option<String> = row.try_get("error_message")?;
+        let duration_ms: Option<i64> = row.try_get("duration_ms")?;
+
+        Ok(Self {
+            id,
+            job_name,
+            started_at,
+            finished_at,
+            status: JobRunStatus::from_str(&status_str),
+            error_message,
+            duration_ms,
+        })
+    }
+}
+
 /// Records the start of a job execution, inserting a new record with `Running` status.
 /// Returns the unique `Uuid` for this job run.
 pub async fn record_start(pool: &PgPool, job_name: &str) -> Result<Uuid, JobError> {
     let id = Uuid::new_v4();
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO job_runs (id, job_name, started_at, status)
         VALUES ($1, $2, NOW(), 'running')
         "#,
-        id,
-        job_name
     )
+    .bind(id)
+    .bind(job_name)
     .execute(pool)
     .await?;
 
@@ -50,15 +92,15 @@ pub async fn record_start(pool: &PgPool, job_name: &str) -> Result<Uuid, JobErro
 
 /// Records the successful completion of a job run.
 pub async fn record_success(pool: &PgPool, run_id: Uuid, duration_ms: i64) -> Result<(), JobError> {
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE job_runs
         SET status = 'succeeded', finished_at = NOW(), duration_ms = $2
         WHERE id = $1
         "#,
-        run_id,
-        duration_ms
     )
+    .bind(run_id)
+    .bind(duration_ms)
     .execute(pool)
     .await?;
 
@@ -72,16 +114,16 @@ pub async fn record_failure(
     error: &str,
     duration_ms: i64,
 ) -> Result<(), JobError> {
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE job_runs
         SET status = 'failed', finished_at = NOW(), duration_ms = $2, error_message = $3
         WHERE id = $1
         "#,
-        run_id,
-        duration_ms,
-        error
     )
+    .bind(run_id)
+    .bind(duration_ms)
+    .bind(error)
     .execute(pool)
     .await?;
 
@@ -90,15 +132,15 @@ pub async fn record_failure(
 
 /// Records that a job timed out.
 pub async fn record_timeout(pool: &PgPool, run_id: Uuid, duration_ms: i64) -> Result<(), JobError> {
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE job_runs
         SET status = 'timed_out', finished_at = NOW(), duration_ms = $2, error_message = 'Job execution timed out'
         WHERE id = $1
         "#,
-        run_id,
-        duration_ms
     )
+    .bind(run_id)
+    .bind(duration_ms)
     .execute(pool)
     .await?;
 
@@ -111,20 +153,24 @@ pub async fn get_recent_runs(
     job_name: &str,
     limit: i64,
 ) -> Result<Vec<JobRun>, JobError> {
-    let runs = sqlx::query_as!(
-        JobRun,
+    let rows = sqlx::query(
         r#"
-        SELECT id, job_name, started_at, finished_at, status AS "status: JobRunStatus", error_message, duration_ms
+        SELECT id, job_name, started_at, finished_at, status, error_message, duration_ms
         FROM job_runs
         WHERE job_name = $1
         ORDER BY started_at DESC
         LIMIT $2
         "#,
-        job_name,
-        limit
     )
+    .bind(job_name)
+    .bind(limit)
     .fetch_all(pool)
     .await?;
+
+    let mut runs = Vec::with_capacity(rows.len());
+    for row in rows {
+        runs.push(JobRun::from_row(&row)?);
+    }
 
     Ok(runs)
 }
@@ -132,13 +178,13 @@ pub async fn get_recent_runs(
 /// Cleans up job run records older than the specified retention period.
 /// Returns the number of deleted records.
 pub async fn cleanup_old_runs(pool: &PgPool, retain_days: i64) -> Result<u64, JobError> {
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         DELETE FROM job_runs
         WHERE started_at < NOW() - INTERVAL '1 day' * $1
         "#,
-        retain_days as f64
     )
+    .bind(retain_days as f64)
     .execute(pool)
     .await?;
 

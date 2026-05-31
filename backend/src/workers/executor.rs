@@ -111,7 +111,9 @@ impl TaskExecutor {
     #[tracing::instrument(skip(self, task), fields(executor.max_concurrency = self.max_concurrency))]
     pub fn execute(
         &self,
-        task: Box<dyn std::future::Future<Output = Result<(), AppError>> + Send + 'static>,
+        task: std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<(), AppError>> + Send + 'static>,
+        >,
     ) -> JoinHandle<Result<(), AppError>> {
         // Clone the semaphore and counters for the task closure
         let semaphore = self.semaphore.clone();

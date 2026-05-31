@@ -13,3 +13,7 @@ pub mod log_aggregator;
 pub mod log_alerts;
 pub mod sys_metrics;
 pub mod tracing;
+pub mod compilation;
+pub mod dependency_analyzer;
+pub mod contract_call_logger;
+pub mod compliance;

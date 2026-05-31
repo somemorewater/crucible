@@ -25,7 +25,7 @@ pub struct RedisConfig {
 }
 
 impl fmt::Debug for RedisConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Formatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RedisConfig")
             .field("url", &"[REDACTED]")
             .field(
