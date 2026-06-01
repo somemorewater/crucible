@@ -1,14 +1,12 @@
 [workspace]
 members = [
-    "backend",
     "contracts/crucible",
+    "contracts/treasury",
     "crucible-macros",
     "examples/counter",
     "examples/token",
-    "examples/escrow",
     "examples/vesting",
-    "examples/dex",
-    "examples/nft-marketplace",
+    "contracts/supply_chain",
 ]
 resolver = "2"
 
