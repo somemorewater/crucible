@@ -196,18 +196,23 @@ async fn main() -> Result<(), anyhow::Error> {
                     "/analyze-dependencies",
                     post(backend::api::handlers::contracts::analyze_dependencies),
                 )
-                .with_state(state.clone()),
-        )
-        .route(
-            "/api/v1/networks",
-            get(backend::api::handlers::contracts::get_networks),
-        )
-                .route("/compile", post(backend::api::handlers::contracts::compile_contract))
-                .route("/analyze-dependencies", post(backend::api::handlers::contracts::analyze_dependencies))
-                .route("/compliance-check", post(backend::api::handlers::contracts::check_compliance))
-                .route("/logs", post(backend::api::handlers::contracts::log_contract_call))
-                .route("/logs", get(backend::api::handlers::contracts::get_contract_logs))
-                .route("/templates", get(backend::api::handlers::contracts::get_templates))
+                .route(
+                    "/upgrade-plan",
+                    post(backend::api::handlers::contracts::create_upgrade_plan),
+                )
+                .route(
+                    "/compliance-check",
+                    post(backend::api::handlers::contracts::check_compliance),
+                )
+                .route(
+                    "/logs",
+                    post(backend::api::handlers::contracts::log_contract_call)
+                        .get(backend::api::handlers::contracts::get_contract_logs),
+                )
+                .route(
+                    "/templates",
+                    get(backend::api::handlers::contracts::get_templates),
+                )
                 .with_state(state.clone()),
         )
         .route(

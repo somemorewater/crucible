@@ -3,10 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::api::contracts::ApiResponse;
-use crate::error::AppError;
-use crate::services::compilation::{CompilationResult, CompilationService};
-use crate::services::dependency_analyzer::{DependencyAnalysis, DependencyAnalyzer};
 use crate::api::handlers::profiling::AppState;
+use crate::error::AppError;
+use crate::services::compilation::CompilationService;
+use crate::services::contract_upgrade::{ContractUpgradeManager, ContractUpgradeRequest};
+use crate::services::dependency_analyzer::DependencyAnalyzer;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +20,18 @@ pub struct CompileRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AnalyzeRequest {
     pub cargo_toml: String,
+}
+
+/// POST /api/v1/contracts/upgrade-plan
+pub async fn create_upgrade_plan(
+    Json(payload): Json<ContractUpgradeRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let service = ContractUpgradeManager::new();
+    let result = service
+        .plan_upgrade(payload)
+        .map_err(|err| AppError::ValidationError(err.to_string()))?;
+
+    Ok(Json(ApiResponse::new(result)))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
