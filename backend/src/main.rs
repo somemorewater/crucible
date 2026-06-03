@@ -14,10 +14,15 @@ use backend::{
     jobs::{monitor_transaction, TransactionMonitorJob},
     services::{
         error_recovery::ErrorManager, log_aggregator::LogAggregator, log_alerts::AlertManager,
+        audit::AuditService,
+        error_recovery::ErrorManager,
+        log_aggregator::LogAggregator,
+        log_alerts::AlertManager,
         sys_metrics::MetricsExporter,
         tracing::{TracingService, TracingConfig},
     },
 };
+use backend::services::audit;
 use profiling::AppState;
 use redis::aio::ConnectionManager;
 use sqlx::postgres::PgPoolOptions;
@@ -122,7 +127,13 @@ async fn main() -> Result<(), anyhow::Error> {
         error_manager,
         alert_manager,
         redis_client,
+        log_aggregator,
+        redis: redis_client.clone(),
+        db: db_pool.clone(),
+        redis_conn: redis_conn_dashboard, // Depending on what DashboardState actually expects
     });
+
+    let audit_service = Arc::new(AuditService::new(db_pool.clone(), Arc::new(redis_client.clone())));
 
     // OpenAPI docs
     #[derive(OpenApi)]
@@ -132,6 +143,8 @@ async fn main() -> Result<(), anyhow::Error> {
             profiling::get_health,
             dashboard::get_dashboard_metrics,
             dashboard::get_contract_stats,
+            audit::list_audit_reports,
+            audit::get_audit_report,
         ),
         components(
             schemas(
@@ -144,6 +157,10 @@ async fn main() -> Result<(), anyhow::Error> {
         components(schemas(
             profiling::MetricsReport,
             profiling::HealthResponse,
+            dashboard::DashboardMetrics,
+            dashboard::ContractStats,
+            audit::AuditEventRecord,
+            audit::AuditEventRequest,
         )),
         tags(
             (name = "profiling", description = "Performance and health monitoring endpoints"),
@@ -186,6 +203,17 @@ async fn main() -> Result<(), anyhow::Error> {
             Router::new()
                 .route("/metrics", get(get_dashboard_metrics))
                 .route("/contracts/:contract_id/stats", get(get_contract_stats)),
+                .route("/", get(get_dashboard))
+                .route("/metrics", get(dashboard::get_dashboard_metrics))
+                .route("/contracts/:contract_id/stats", get(dashboard::get_contract_stats))
+                .with_state(dashboard_state),
+        )
+        .nest(
+            "/api/v1/audit",
+            audit::routes(audit_service.clone()),
+        )
+            "/api/v1/errors",
+            errors::error_analytics_routes(db_pool.clone(), redis_conn_dashboard.clone())
         )
         .route("/api/dashboard", get(get_dashboard))
         .with_state(dashboard_state)

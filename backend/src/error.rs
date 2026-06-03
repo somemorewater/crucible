@@ -9,6 +9,7 @@ use axum::{
     Json,
 };
 use serde::Serialize;
+use serde_json::json;
 use thiserror::Error;
 use tracing::error;
 
@@ -50,6 +51,43 @@ pub enum AppError {
     InternalError(String),
 
     /// 502 — A Stellar network operation failed.
+    /// 404  The requested resource was not found.
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    /// 400  The request was malformed or contained invalid data.
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
+    /// 401  Authentication is required or failed.
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+
+    /// 403  The authenticated user lacks permission.
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
+    /// 409  The request conflicts with the current state.
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
+    /// 422  The request body was well-formed but semantically invalid.
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+
+    /// 500  An internal database error occurred.
+    Database(#[from] sqlx::Error),
+
+    /// 500  An internal Redis error occurred.
+    Redis(#[from] redis::RedisError),
+
+    /// 500  A serialization error occurred.
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+
+    /// 500  A catch-all for unexpected internal errors.
+
+    /// 502  External Stellar integration failed.
     #[error("Stellar operation failed: {0}")]
     StellarError(String),
 }
@@ -105,6 +143,13 @@ impl IntoResponse for AppError {
             AppError::RedisError(e) => {
                 error!("Redis error: {e:?}");
                 tracing::error!("Database error: {e:?}");
+            AppError::ValidationError(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "validation_error",
+                msg.clone(),
+            ),
+            AppError::Database(e) => {
+                error!(error = ?e, "Database error");
                     "database_error",
                     "An internal database error occurred".to_string(),
                 )
@@ -116,6 +161,14 @@ impl IntoResponse for AppError {
             }
             AppError::Serialization(e) => {
                 error!("Serialization error: {e:?}");
+            AppError::Redis(e) => {
+                error!(error = ?e, "Redis error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "A cache error occurred".to_string(),
+                )
+            }
+                error!(error = ?e, "Serialization error");
                     "serialization_error",
                     "A serialization error occurred".to_string(),
                 )
@@ -123,6 +176,7 @@ impl IntoResponse for AppError {
             AppError::InternalError(msg) => {
                 error!("Internal error: {msg}");
                 tracing::error!("Internal error: {msg}");
+                error!(error = %msg, "Internal error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal_error",
@@ -153,6 +207,8 @@ impl IntoResponse for AppError {
         (status, body).into_response()
                 tracing::error!("Stellar error: {msg}");
                     "stellar_error",
+                error!(error = %msg, "Stellar integration error");
+                    "A Stellar network error occurred".to_string(),
                 )
             }
         };
@@ -165,6 +221,8 @@ impl IntoResponse for AppError {
             }),
         )
             .into_response()
+        let body = Json(ErrorResponse { code: code.to_string(), message });
+        (status, body).into_response()
     }
 }
 
@@ -174,20 +232,25 @@ mod tests {
 
     #[test]
     fn test_not_found_display() {
+    fn test_not_found_error_display() {
         let err = AppError::NotFound("Contract not found".into());
         assert_eq!(err.to_string(), "Not found: Contract not found");
     }
 
     fn test_bad_request_display() {
+    #[test]
+    fn test_bad_request_error_display() {
         let err = AppError::BadRequest("Invalid address format".into());
         assert_eq!(err.to_string(), "Bad request: Invalid address format");
     }
 
+    #[test]
     fn test_validation_error_display() {
         let err = AppError::ValidationError("name is required".into());
         assert_eq!(err.to_string(), "Validation error: name is required");
     }
 
+    #[test]
     fn test_internal_error_display() {
         let err = AppError::InternalError("unexpected state".into());
         assert_eq!(err.to_string(), "Internal error: unexpected state");

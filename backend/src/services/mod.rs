@@ -3,6 +3,7 @@ pub mod log_alerts;
 pub mod alerts;
 pub mod analytics_aggregator;
 pub mod business_metrics;
+pub mod audit;
 pub mod error_recovery;
 pub mod event_indexer;
 pub mod feature_flags;

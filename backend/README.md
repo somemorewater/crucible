@@ -32,6 +32,11 @@ High-performance Rust backend for the Crucible smart contract testing platform, 
 ### Log Ingestion
 - `POST /api/alerts/ingest` - Ingest a log entry for pattern matching.
 
+### Security Audit Report Viewer
+- `GET /api/v1/audit/reports` — List recent audit events. Supports optional `event_type` and `limit` query parameters.
+- `GET /api/v1/audit/reports/:id` — Fetch details for a single audit event.
+- `POST /api/v1/audit/log` — Log a security audit event for later review.
+
 ### Build Error Analytics Dashboard API
 - `GET /api/v1/errors/dashboard/build-errors` — Returns build error analytics (total errors, error types, recent errors)
     - **Response:**
