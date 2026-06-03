@@ -6,6 +6,10 @@ members = [
     "examples/counter",
     "examples/token",
     "examples/vesting",
+    "examples/staking",
+    "examples/time_locked_vault",
+    "examples/emergency_stop",
+    "examples/gasless",
 ]
 resolver = "2"
 
