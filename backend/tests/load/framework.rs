@@ -406,7 +406,11 @@ mod tests {
     fn test_load_result_counts() {
         let result = make_result(
             &[10, 20, 30],
-            &[StatusCode::OK, StatusCode::OK, StatusCode::INTERNAL_SERVER_ERROR],
+            &[
+                StatusCode::OK,
+                StatusCode::OK,
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ],
         );
         assert_eq!(result.total(), 3);
         assert_eq!(result.successes(), 2);
@@ -476,7 +480,10 @@ mod tests {
     fn test_load_result_rps() {
         let result = LoadResult {
             outcomes: vec![
-                RequestOutcome { status: StatusCode::OK, latency: Duration::from_millis(1) };
+                RequestOutcome {
+                    status: StatusCode::OK,
+                    latency: Duration::from_millis(1)
+                };
                 100
             ],
             total_duration: Duration::from_secs(1),
@@ -524,10 +531,7 @@ mod tests {
     #[tokio::test]
     async fn test_run_load_collects_all_outcomes() {
         let cfg = LoadConfig::new(4, 5); // 20 total
-        let result = run_load(cfg, || async {
-            (StatusCode::OK, Duration::from_millis(1))
-        })
-        .await;
+        let result = run_load(cfg, || async { (StatusCode::OK, Duration::from_millis(1)) }).await;
 
         assert_eq!(result.total(), 20);
         assert_eq!(result.failures(), 0);

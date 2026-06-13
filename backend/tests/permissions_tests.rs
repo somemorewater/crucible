@@ -101,14 +101,13 @@ async fn test_permission_checker_has_permission() {
     cleanup_test_data(&db).await;
 
     // Create test user
-    let user_id: i32 = sqlx::query_scalar(
-        "INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id",
-    )
-    .bind("test@example.com")
-    .bind(Role::User)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let user_id: i32 =
+        sqlx::query_scalar("INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id")
+            .bind("test@example.com")
+            .bind(Role::User)
+            .fetch_one(&db)
+            .await
+            .unwrap();
 
     // Create permission
     let perm_id: i32 = sqlx::query_scalar(
@@ -147,14 +146,13 @@ async fn test_permission_checker_caching() {
     let (db, redis) = setup_test_env().await;
     cleanup_test_data(&db).await;
 
-    let user_id: i32 = sqlx::query_scalar(
-        "INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id",
-    )
-    .bind("cache_test@example.com")
-    .bind(Role::User)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let user_id: i32 =
+        sqlx::query_scalar("INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id")
+            .bind("cache_test@example.com")
+            .bind(Role::User)
+            .fetch_one(&db)
+            .await
+            .unwrap();
 
     let perm_id: i32 = sqlx::query_scalar(
         "INSERT INTO permissions (resource, action) VALUES ($1, $2) RETURNING id",
@@ -191,14 +189,13 @@ async fn test_permission_checker_invalidate_cache() {
     let (db, redis) = setup_test_env().await;
     cleanup_test_data(&db).await;
 
-    let user_id: i32 = sqlx::query_scalar(
-        "INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id",
-    )
-    .bind("invalidate@example.com")
-    .bind(Role::User)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let user_id: i32 =
+        sqlx::query_scalar("INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id")
+            .bind("invalidate@example.com")
+            .bind(Role::User)
+            .fetch_one(&db)
+            .await
+            .unwrap();
 
     let checker = PermissionChecker::new(db.clone(), redis.clone());
 
@@ -221,14 +218,13 @@ async fn test_get_user_role() {
     let (db, redis) = setup_test_env().await;
     cleanup_test_data(&db).await;
 
-    let user_id: i32 = sqlx::query_scalar(
-        "INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id",
-    )
-    .bind("role_test@example.com")
-    .bind(Role::Admin)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let user_id: i32 =
+        sqlx::query_scalar("INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id")
+            .bind("role_test@example.com")
+            .bind(Role::Admin)
+            .fetch_one(&db)
+            .await
+            .unwrap();
 
     let checker = PermissionChecker::new(db.clone(), redis.clone());
     let role = checker.get_user_role(user_id).await.unwrap();
@@ -243,14 +239,13 @@ async fn test_middleware_with_permission() {
     let (db, redis) = setup_test_env().await;
     cleanup_test_data(&db).await;
 
-    let user_id: i32 = sqlx::query_scalar(
-        "INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id",
-    )
-    .bind("middleware@example.com")
-    .bind(Role::User)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let user_id: i32 =
+        sqlx::query_scalar("INSERT INTO users (address, role) VALUES ($1, $2) RETURNING id")
+            .bind("middleware@example.com")
+            .bind(Role::User)
+            .fetch_one(&db)
+            .await
+            .unwrap();
 
     let perm_id: i32 = sqlx::query_scalar(
         "INSERT INTO permissions (resource, action) VALUES ($1, $2) RETURNING id",

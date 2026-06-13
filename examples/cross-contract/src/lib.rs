@@ -10,7 +10,9 @@
 #![no_std]
 #![allow(deprecated)]
 
-use soroban_sdk::{contract, contractclient, contractimpl, contracttype, symbol_short, token, Address, Env};
+use soroban_sdk::{
+    contract, contractclient, contractimpl, contracttype, symbol_short, token, Address, Env,
+};
 
 // ---------------------------------------------------------------------------
 // Counter — a simple counter callable by other contracts
@@ -39,9 +41,7 @@ impl Counter {
             .get(&CounterKey::Count)
             .unwrap_or(0);
         let new_count = count + 1;
-        env.storage()
-            .instance()
-            .set(&CounterKey::Count, &new_count);
+        env.storage().instance().set(&CounterKey::Count, &new_count);
         env.events().publish((symbol_short!("incr"),), new_count);
         new_count
     }
@@ -97,11 +97,7 @@ impl Router {
     ///
     /// This is a cross-contract call: `Router` → `Counter`.
     pub fn ping_counter(env: Env) -> u32 {
-        let counter: Address = env
-            .storage()
-            .instance()
-            .get(&RouterKey::Counter)
-            .unwrap();
+        let counter: Address = env.storage().instance().get(&RouterKey::Counter).unwrap();
         let client = CounterClient::new(&env, &counter);
         let value = client.increment();
         env.events().publish((symbol_short!("pinged"),), value);
@@ -113,23 +109,14 @@ impl Router {
     /// This is a cross-contract call: `Router` → `Token`.
     pub fn route_transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&RouterKey::Token)
-            .unwrap();
+        let token_addr: Address = env.storage().instance().get(&RouterKey::Token).unwrap();
         token::Client::new(&env, &token_addr).transfer(&from, &to, &amount);
-        env.events()
-            .publish((symbol_short!("routed"),), amount);
+        env.events().publish((symbol_short!("routed"),), amount);
     }
 
     /// Return the current counter value by calling the counter contract.
     pub fn counter_value(env: Env) -> u32 {
-        let counter: Address = env
-            .storage()
-            .instance()
-            .get(&RouterKey::Counter)
-            .unwrap();
+        let counter: Address = env.storage().instance().get(&RouterKey::Counter).unwrap();
         CounterClient::new(&env, &counter).get()
     }
 }
@@ -169,9 +156,7 @@ impl Aggregator {
             panic!("already initialized");
         }
         env.storage().instance().set(&AggKey::Router, &router);
-        env.storage()
-            .instance()
-            .set(&AggKey::TotalRouted, &0_i128);
+        env.storage().instance().set(&AggKey::TotalRouted, &0_i128);
     }
 
     /// Ping the counter through the router and return the counter value.

@@ -287,7 +287,7 @@ mod benchmarks {
 
         let avg_ns = duration.as_nanos() / iterations;
         println!("Average span creation time: {} ns", avg_ns);
-        
+
         // Assert that span creation is fast (< 10 microseconds).
         // Note: threshold is relaxed for unoptimised (debug) builds; a release
         // build typically measures well under 1 µs.

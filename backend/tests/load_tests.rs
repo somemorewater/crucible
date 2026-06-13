@@ -21,8 +21,8 @@
 //! ```
 
 mod load {
-    pub mod framework;
     pub mod dashboard_load;
+    pub mod framework;
     pub mod profile_load;
     pub mod status_load;
     pub mod stellar_load;

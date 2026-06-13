@@ -1,8 +1,8 @@
 #![cfg(test)]
 extern crate std;
 
-use crucible::prelude::*;
 use crucible::assert_emitted;
+use crucible::prelude::*;
 use soroban_sdk::{symbol_short, Address};
 
 use crate::{Aggregator, AggregatorClient, Counter, CounterClient, Router, RouterClient};
@@ -40,12 +40,18 @@ impl Ctx {
 
         // Wire up: Router knows Counter + Token; Aggregator knows Router.
         env.mock_all_auths();
-        RouterClient::new(env.inner(), &router_id)
-            .initialize(&counter_id, &token.address());
-        AggregatorClient::new(env.inner(), &agg_id)
-            .initialize(&router_id);
+        RouterClient::new(env.inner(), &router_id).initialize(&counter_id, &token.address());
+        AggregatorClient::new(env.inner(), &agg_id).initialize(&router_id);
 
-        Ctx { env, counter_id, router_id, agg_id, token, alice, bob }
+        Ctx {
+            env,
+            counter_id,
+            router_id,
+            agg_id,
+            token,
+            alice,
+            bob,
+        }
     }
 
     fn counter(&self) -> CounterClient<'_> {
@@ -129,8 +135,7 @@ fn test_router_route_transfer_moves_tokens() {
     ctx.token.mint(&ctx.alice, 1_000_i128);
 
     ctx.env.mock_all_auths();
-    ctx.router()
-        .route_transfer(&ctx.alice, &ctx.bob, &400_i128);
+    ctx.router().route_transfer(&ctx.alice, &ctx.bob, &400_i128);
 
     assert_eq!(ctx.token.balance(&ctx.alice), 600_i128);
     assert_eq!(ctx.token.balance(&ctx.bob), 400_i128);
@@ -142,8 +147,7 @@ fn test_router_route_transfer_emits_event() {
     ctx.token.mint(&ctx.alice, 500_i128);
 
     ctx.env.mock_all_auths();
-    ctx.router()
-        .route_transfer(&ctx.alice, &ctx.bob, &500_i128);
+    ctx.router().route_transfer(&ctx.alice, &ctx.bob, &500_i128);
 
     assert_emitted!(ctx.env, ctx.router_id, (symbol_short!("routed"),), 500_i128);
 }
@@ -290,8 +294,7 @@ fn test_transfer_insufficient_balance_reverts() {
     // Alice has no tokens — transfer must fail.
     ctx.env.mock_all_auths();
     let result = std::panic::catch_unwind(|| {
-        ctx.agg()
-            .aggregate_transfer(&ctx.alice, &ctx.bob, &1_i128);
+        ctx.agg().aggregate_transfer(&ctx.alice, &ctx.bob, &1_i128);
     });
     assert!(result.is_err());
     // Total routed must remain zero.

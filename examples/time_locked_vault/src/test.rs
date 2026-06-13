@@ -1,8 +1,8 @@
 #![cfg(test)]
 extern crate std;
 
-use crucible::prelude::*;
 use crucible::assert_reverts;
+use crucible::prelude::*;
 
 use crate::{TimeLockedVault, TimeLockedVaultClient};
 
@@ -65,8 +65,12 @@ impl Ctx {
 fn test_deposit_transfers_tokens_to_vault() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    ctx.client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
+    ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
 
     assert_eq!(ctx.token.balance(&ctx.id), AMOUNT);
     assert_eq!(ctx.token.balance(&ctx.alice), AMOUNT * 2);
@@ -76,12 +80,18 @@ fn test_deposit_transfers_tokens_to_vault() {
 fn test_deposit_returns_incrementing_ids() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    let id0 = ctx
-        .client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
-    let id1 = ctx
-        .client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
+    let id0 = ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
+    let id1 = ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
 
     assert_eq!(id0, 0);
     assert_eq!(id1, 1);
@@ -91,9 +101,12 @@ fn test_deposit_returns_incrementing_ids() {
 fn test_withdraw_after_unlock_time() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    let id = ctx
-        .client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
+    let id = ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
 
     ctx.env.advance_time(Duration::seconds(LOCK_DURATION + 1));
     ctx.client().withdraw(&id);
@@ -107,9 +120,12 @@ fn test_withdraw_after_unlock_time() {
 fn test_withdraw_before_unlock_time_reverts() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    let id = ctx
-        .client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
+    let id = ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
 
     // Do NOT advance time.
     assert_reverts!(ctx.client().withdraw(&id), "time lock");
@@ -119,9 +135,12 @@ fn test_withdraw_before_unlock_time_reverts() {
 fn test_double_withdraw_reverts() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    let id = ctx
-        .client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
+    let id = ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
 
     ctx.env.advance_time(Duration::seconds(LOCK_DURATION + 1));
     ctx.client().withdraw(&id);
@@ -134,8 +153,12 @@ fn test_deposit_zero_amount_reverts() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
     assert_reverts!(
-        ctx.client()
-            .deposit(&ctx.alice, &ctx.token.address(), &0_i128, &ctx.unlock_time()),
+        ctx.client().deposit(
+            &ctx.alice,
+            &ctx.token.address(),
+            &0_i128,
+            &ctx.unlock_time()
+        ),
         "positive"
     );
 }
@@ -156,9 +179,12 @@ fn test_deposit_past_unlock_time_reverts() {
 fn test_multiple_depositors_independent() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    let id_a = ctx
-        .client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
+    let id_a = ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
     let id_b = ctx
         .client()
         .deposit(&ctx.bob, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
@@ -175,9 +201,12 @@ fn test_multiple_depositors_independent() {
 fn test_get_deposit_returns_correct_data() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    let id = ctx
-        .client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
+    let id = ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
 
     let dep = ctx.client().get_deposit(&id);
     assert_eq!(dep.owner, ctx.alice.clone());
@@ -190,23 +219,40 @@ fn test_get_deposit_returns_correct_data() {
 fn test_deposit_emits_event() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    ctx.client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
-    let matching = ctx.env.events_matching((soroban_sdk::symbol_short!("deposited"),));
-    assert!(!matching.is_empty(), "expected deposited event to be emitted");
+    ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
+    let matching = ctx
+        .env
+        .events_matching((soroban_sdk::symbol_short!("deposited"),));
+    assert!(
+        !matching.is_empty(),
+        "expected deposited event to be emitted"
+    );
 }
 
 #[test]
 fn test_withdraw_emits_event() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
-    let id = ctx
-        .client()
-        .deposit(&ctx.alice, &ctx.token.address(), &AMOUNT, &ctx.unlock_time());
+    let id = ctx.client().deposit(
+        &ctx.alice,
+        &ctx.token.address(),
+        &AMOUNT,
+        &ctx.unlock_time(),
+    );
 
     ctx.env.advance_time(Duration::seconds(LOCK_DURATION + 1));
     ctx.client().withdraw(&id);
 
-    let matching = ctx.env.events_matching((soroban_sdk::symbol_short!("withdrew"),));
-    assert!(!matching.is_empty(), "expected withdrew event to be emitted");
+    let matching = ctx
+        .env
+        .events_matching((soroban_sdk::symbol_short!("withdrew"),));
+    assert!(
+        !matching.is_empty(),
+        "expected withdrew event to be emitted"
+    );
 }

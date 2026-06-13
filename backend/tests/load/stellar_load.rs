@@ -12,8 +12,8 @@
 
 use std::time::Instant;
 
-use axum::{body::to_bytes, routing::get, Router};
 use axum::http::StatusCode;
+use axum::{body::to_bytes, routing::get, Router};
 use hyper::Request;
 use tower::ServiceExt;
 

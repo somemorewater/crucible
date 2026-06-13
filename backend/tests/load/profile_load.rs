@@ -12,19 +12,19 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{body::to_bytes, routing::post, Router};
 use axum::http::StatusCode;
+use axum::{body::to_bytes, routing::post, Router};
 use hyper::Request;
 use tower::ServiceExt;
 
 use backend::api::handlers::profiling::{trigger_profile_collection, AppState};
-use backend::config::{AppConfig, reload::ConfigManager};
-use backend::services::{error_recovery::ErrorManager, sys_metrics::MetricsExporter};
+use backend::config::{reload::ConfigManager, AppConfig};
 use backend::config::{reload::ConfigManager, AppConfig};
 use backend::services::{
     contract_benchmark::ContractBenchmarkService, error_recovery::ErrorManager,
     log_aggregator::LogAggregator, sys_metrics::MetricsExporter,
 };
+use backend::services::{error_recovery::ErrorManager, sys_metrics::MetricsExporter};
 use redis::Client as RedisClient;
 
 use crate::load::framework::{assert_load_result, LoadConfig, LoadResult};
@@ -439,10 +439,7 @@ async fn test_profile_concurrent_unique_ids() {
                 .unwrap();
             let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
             let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-            let id = json["data"]["profile_id"]
-                .as_str()
-                .unwrap()
-                .to_string();
+            let id = json["data"]["profile_id"].as_str().unwrap().to_string();
             ids_clone.lock().unwrap().insert(id);
         });
     }
@@ -450,5 +447,9 @@ async fn test_profile_concurrent_unique_ids() {
     while join_set.join_next().await.is_some() {}
 
     let collected = ids.lock().unwrap();
-    assert_eq!(collected.len(), 20, "all 20 concurrent profile IDs must be unique");
+    assert_eq!(
+        collected.len(),
+        20,
+        "all 20 concurrent profile IDs must be unique"
+    );
 }

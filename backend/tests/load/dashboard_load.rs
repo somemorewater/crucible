@@ -14,16 +14,14 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{body::to_bytes, routing::get, Router};
 use axum::http::StatusCode;
+use axum::{body::to_bytes, routing::get, Router};
 use hyper::Request;
 use tower::ServiceExt;
 
 use backend::api::handlers::dashboard::{get_dashboard, DashboardState};
 use backend::services::{
-    alerts::AlertDispatcher,
-    error_recovery::ErrorManager,
-    log_alerts::AlertManager,
+    alerts::AlertDispatcher, error_recovery::ErrorManager, log_alerts::AlertManager,
     sys_metrics::MetricsExporter,
 };
 
@@ -115,7 +113,10 @@ async fn test_dashboard_response_shape() {
         json.get("active_recovery_tasks").is_some(),
         "must have 'active_recovery_tasks'"
     );
-    assert!(json.get("active_alerts").is_some(), "must have 'active_alerts'");
+    assert!(
+        json.get("active_alerts").is_some(),
+        "must have 'active_alerts'"
+    );
 }
 
 /// `metrics` object contains the expected sub-fields.
@@ -195,8 +196,8 @@ async fn test_dashboard_includes_recovery_tasks() {
 /// `active_alerts` reflects alerts fired by the alert manager.
 #[tokio::test]
 async fn test_dashboard_includes_active_alerts() {
-    use backend::services::log_alerts::{AlertRule, AlertSeverity};
     use backend::services::log_aggregator::LogEntry;
+    use backend::services::log_alerts::{AlertRule, AlertSeverity};
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -269,10 +270,7 @@ async fn test_dashboard_empty_state() {
     let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
-    assert_eq!(
-        json["active_recovery_tasks"].as_array().unwrap().len(),
-        0
-    );
+    assert_eq!(json["active_recovery_tasks"].as_array().unwrap().len(), 0);
     assert_eq!(json["active_alerts"].as_array().unwrap().len(), 0);
 }
 

@@ -30,7 +30,9 @@ pub fn test_app() -> Router {
         db: None,
         metrics_exporter: Arc::new(MetricsExporter::new()),
         error_manager: Arc::new(ErrorManager::new()),
-        config_manager: Arc::new(backend::config::reload::ConfigManager::new(backend::config::AppConfig::default())),
+        config_manager: Arc::new(backend::config::reload::ConfigManager::new(
+            backend::config::AppConfig::default(),
+        )),
         log_aggregator: Arc::new(backend::services::log_aggregator::LogAggregator::new().0),
         redis: redis::Client::open("redis://127.0.0.1/").unwrap(),
         config_manager: Arc::new(ConfigManager::new(AppConfig::default())),

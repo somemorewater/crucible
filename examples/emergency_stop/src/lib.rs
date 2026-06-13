@@ -44,8 +44,10 @@ impl EmergencyStop {
         env.storage()
             .instance()
             .set(&DataKey::Guardian(guardian.clone()), &true);
-        env.events()
-            .publish((symbol_short!("guardian"),), (symbol_short!("added"), guardian));
+        env.events().publish(
+            (symbol_short!("guardian"),),
+            (symbol_short!("added"), guardian),
+        );
     }
 
     /// Remove a guardian address. Admin only.
@@ -77,8 +79,7 @@ impl EmergencyStop {
             panic!("already stopped");
         }
         env.storage().instance().set(&DataKey::Stopped, &true);
-        env.events()
-            .publish((symbol_short!("stopped"),), caller);
+        env.events().publish((symbol_short!("stopped"),), caller);
     }
 
     /// Resume operations. Admin only.
@@ -102,8 +103,7 @@ impl EmergencyStop {
         if Self::is_stopped_internal(&env) {
             panic!("contract is stopped");
         }
-        env.events()
-            .publish((symbol_short!("action"),), caller);
+        env.events().publish((symbol_short!("action"),), caller);
     }
 
     // -----------------------------------------------------------------------

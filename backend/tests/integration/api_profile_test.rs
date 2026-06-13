@@ -14,11 +14,14 @@ async fn profile_returns_200() {
                 .method("POST")
                 .uri("/api/profile")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::json!({
-                    "duration_secs": 10,
-                    "sample_rate_hz": 100,
-                    "label": "integration-test"
-                }).to_string()))
+                .body(Body::from(
+                    serde_json::json!({
+                        "duration_secs": 10,
+                        "sample_rate_hz": 100,
+                        "label": "integration-test"
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
@@ -35,11 +38,14 @@ async fn profile_body_contains_profile_id() {
                 .method("POST")
                 .uri("/api/profile")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::json!({
-                    "duration_secs": 10,
-                    "sample_rate_hz": 100,
-                    "label": "integration-test"
-                }).to_string()))
+                .body(Body::from(
+                    serde_json::json!({
+                        "duration_secs": 10,
+                        "sample_rate_hz": 100,
+                        "label": "integration-test"
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
@@ -52,8 +58,14 @@ async fn profile_body_contains_profile_id() {
 
     assert_eq!(json["status"], "success");
     let data = &json["data"];
-    assert!(data["message"].as_str().unwrap().starts_with("Profiling collection triggered"));
-    assert!(data["profile_id"].is_string(), "profile_id must be a string");
+    assert!(data["message"]
+        .as_str()
+        .unwrap()
+        .starts_with("Profiling collection triggered"));
+    assert!(
+        data["profile_id"].is_string(),
+        "profile_id must be a string"
+    );
 
     // profile_id should be a valid UUID
     let id = data["profile_id"].as_str().unwrap();
@@ -69,11 +81,14 @@ async fn profile_ids_are_unique_per_request() {
             .method("POST")
             .uri("/api/profile")
             .header("content-type", "application/json")
-            .body(Body::from(serde_json::json!({
-                "duration_secs": 10,
-                "sample_rate_hz": 100,
-                "label": "integration-test"
-            }).to_string()))
+            .body(Body::from(
+                serde_json::json!({
+                    "duration_secs": 10,
+                    "sample_rate_hz": 100,
+                    "label": "integration-test"
+                })
+                .to_string(),
+            ))
             .unwrap()
     };
 
@@ -90,5 +105,8 @@ async fn profile_ids_are_unique_per_request() {
     let j1: serde_json::Value = serde_json::from_slice(&b1).unwrap();
     let j2: serde_json::Value = serde_json::from_slice(&b2).unwrap();
 
-    assert_ne!(j1["data"]["profile_id"], j2["data"]["profile_id"], "each request must produce a unique profile_id");
+    assert_ne!(
+        j1["data"]["profile_id"], j2["data"]["profile_id"],
+        "each request must produce a unique profile_id"
+    );
 }

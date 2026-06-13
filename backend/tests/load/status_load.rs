@@ -12,19 +12,19 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{body::to_bytes, routing::get, Router};
 use axum::http::StatusCode;
+use axum::{body::to_bytes, routing::get, Router};
 use hyper::Request;
 use tower::ServiceExt;
 
 use backend::api::handlers::profiling::{get_system_status, AppState};
-use backend::config::{AppConfig, reload::ConfigManager};
-use backend::services::{error_recovery::ErrorManager, sys_metrics::MetricsExporter};
+use backend::config::{reload::ConfigManager, AppConfig};
 use backend::config::{reload::ConfigManager, AppConfig};
 use backend::services::{
     contract_benchmark::ContractBenchmarkService, error_recovery::ErrorManager,
     log_aggregator::LogAggregator, sys_metrics::MetricsExporter,
 };
+use backend::services::{error_recovery::ErrorManager, sys_metrics::MetricsExporter};
 use redis::Client as RedisClient;
 
 use crate::load::framework::{assert_load_result, LoadConfig, LoadResult};
@@ -238,7 +238,10 @@ async fn test_status_uptime_is_non_negative() {
     let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let uptime = json["data"]["uptime_secs"].as_u64();
-    assert!(uptime.is_some(), "uptime_secs must be a non-negative integer");
+    assert!(
+        uptime.is_some(),
+        "uptime_secs must be a non-negative integer"
+    );
 }
 
 // ---------------------------------------------------------------------------

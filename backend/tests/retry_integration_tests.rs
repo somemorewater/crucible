@@ -102,8 +102,15 @@ async fn abort_on_non_retryable_error() {
         )
         .await;
 
-    assert!(matches!(result, Err(RetryError::Aborted { attempts: 1, .. })));
-    assert_eq!(calls.load(Ordering::SeqCst), 1, "must not retry permanent error");
+    assert!(matches!(
+        result,
+        Err(RetryError::Aborted { attempts: 1, .. })
+    ));
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "must not retry permanent error"
+    );
 }
 
 #[tokio::test]
@@ -129,7 +136,10 @@ async fn retries_transient_but_aborts_on_permanent() {
         )
         .await;
 
-    assert!(matches!(result, Err(RetryError::Aborted { attempts: 3, .. })));
+    assert!(matches!(
+        result,
+        Err(RetryError::Aborted { attempts: 3, .. })
+    ));
 }
 
 // ---------------------------------------------------------------------------

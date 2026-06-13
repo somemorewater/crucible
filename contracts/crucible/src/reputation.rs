@@ -1,5 +1,5 @@
-use soroban_sdk::{contracttype, Address, Env, Val, Symbol, symbol_short};
-use soroban_sdk::testutils::{ContractFunctionSet, ConstructorArgs};
+use soroban_sdk::testutils::{ConstructorArgs, ContractFunctionSet};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol, Val};
 
 #[contracttype]
 #[derive(Clone)]
@@ -25,15 +25,19 @@ impl ReputationContract {
             panic!("already initialized");
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.events().publish((symbol_short!("initialized"), admin), 0u32);
+        env.events()
+            .publish((symbol_short!("initialized"), admin), 0u32);
     }
 
     fn set_reputation(&self, env: Env, caller: Address, account: Address, score: i32) {
         caller.require_auth();
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         assert_eq!(caller, admin, "not admin");
-        env.storage().instance().set(&DataKey::Reputation(account), &score);
-        env.events().publish((symbol_short!("reputation_set"), account), score);
+        env.storage()
+            .instance()
+            .set(&DataKey::Reputation(account), &score);
+        env.events()
+            .publish((symbol_short!("reputation_set"), account), score);
     }
 
     fn increase_reputation(&self, env: Env, caller: Address, account: Address, amount: i32) {
@@ -46,8 +50,11 @@ impl ReputationContract {
             .get(&DataKey::Reputation(account.clone()))
             .unwrap_or(0);
         let new_score = current + amount;
-        env.storage().instance().set(&DataKey::Reputation(account), &new_score);
-        env.events().publish((symbol_short!("reputation_increased"), account), amount);
+        env.storage()
+            .instance()
+            .set(&DataKey::Reputation(account), &new_score);
+        env.events()
+            .publish((symbol_short!("reputation_increased"), account), amount);
     }
 
     fn decrease_reputation(&self, env: Env, caller: Address, account: Address, amount: i32) {
@@ -60,8 +67,11 @@ impl ReputationContract {
             .get(&DataKey::Reputation(account.clone()))
             .unwrap_or(0);
         let new_score = current - amount;
-        env.storage().instance().set(&DataKey::Reputation(account), &new_score);
-        env.events().publish((symbol_short!("reputation_decreased"), account), amount);
+        env.storage()
+            .instance()
+            .set(&DataKey::Reputation(account), &new_score);
+        env.events()
+            .publish((symbol_short!("reputation_decreased"), account), amount);
     }
 
     fn get_reputation(&self, env: Env, account: Address) -> i32 {
@@ -163,7 +173,10 @@ impl ReputationContractClient {
         admin.require_auth();
         self.env.mock_all_auths();
         let client = soroban_sdk::contractclient::ContractClient::new(&self.env, &self.address);
-        client.call(&symbol_short!("increase_reputation"), &(admin, account, amount));
+        client.call(
+            &symbol_short!("increase_reputation"),
+            &(admin, account, amount),
+        );
     }
 
     /// Decrease the reputation of an account by a given amount. Admin only.
@@ -171,21 +184,36 @@ impl ReputationContractClient {
         admin.require_auth();
         self.env.mock_all_auths();
         let client = soroban_sdk::contractclient::ContractClient::new(&self.env, &self.address);
-        client.call(&symbol_short!("decrease_reputation"), &(admin, account, amount));
+        client.call(
+            &symbol_short!("decrease_reputation"),
+            &(admin, account, amount),
+        );
     }
 
     /// Get the reputation of an account.
     pub fn get_reputation(&self, account: &Address) -> i32 {
         let client = soroban_sdk::contractclient::ContractClient::new(&self.env, &self.address);
-        client.call(&symbol_short!("get_reputation"), &(account,)).unwrap().try_into().unwrap()
+        client
+            .call(&symbol_short!("get_reputation"), &(account,))
+            .unwrap()
+            .try_into()
+            .unwrap()
     }
 
     /// Try to increase the reputation of an account by a given amount. Returns Ok(()) if successful, Err(()) if failed.
-    pub fn try_increase_reputation(&self, admin: &Address, account: &Address, amount: i32) -> Result<(), ()> {
+    pub fn try_increase_reputation(
+        &self,
+        admin: &Address,
+        account: &Address,
+        amount: i32,
+    ) -> Result<(), ()> {
         admin.require_auth();
         self.env.mock_all_auths();
         let client = soroban_sdk::contractclient::ContractClient::new(&self.env, &self.address);
-        match client.try_call(&symbol_short!("increase_reputation"), &(admin, account, amount)) {
+        match client.try_call(
+            &symbol_short!("increase_reputation"),
+            &(admin, account, amount),
+        ) {
             Ok(_) => Ok(()),
             Err(_) => Err(()),
         }

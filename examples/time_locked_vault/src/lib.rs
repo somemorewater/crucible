@@ -55,11 +55,7 @@ impl TimeLockedVault {
         }
         owner.require_auth();
 
-        token::Client::new(&env, &token).transfer(
-            &owner,
-            &env.current_contract_address(),
-            &amount,
-        );
+        token::Client::new(&env, &token).transfer(&owner, &env.current_contract_address(), &amount);
 
         let id: u64 = env
             .storage()

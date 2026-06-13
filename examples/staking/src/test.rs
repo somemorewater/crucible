@@ -1,8 +1,8 @@
 #![cfg(test)]
 extern crate std;
 
-use crucible::prelude::*;
 use crucible::assert_reverts;
+use crucible::prelude::*;
 
 use crate::{Staking, StakingClient};
 
@@ -193,7 +193,9 @@ fn test_stake_emits_event() {
     ctx.env.mock_all_auths();
     ctx.client().stake(&ctx.alice, &STAKE_AMOUNT, &None);
     // Verify the staked event is present (alongside the SAC transfer event).
-    let matching = ctx.env.events_matching((soroban_sdk::symbol_short!("staked"),));
+    let matching = ctx
+        .env
+        .events_matching((soroban_sdk::symbol_short!("staked"),));
     assert!(!matching.is_empty(), "expected staked event to be emitted");
 }
 
@@ -203,8 +205,13 @@ fn test_unstake_emits_event() {
     ctx.env.mock_all_auths();
     ctx.client().stake(&ctx.alice, &STAKE_AMOUNT, &None);
     ctx.client().unstake(&ctx.alice);
-    let matching = ctx.env.events_matching((soroban_sdk::symbol_short!("unstaked"),));
-    assert!(!matching.is_empty(), "expected unstaked event to be emitted");
+    let matching = ctx
+        .env
+        .events_matching((soroban_sdk::symbol_short!("unstaked"),));
+    assert!(
+        !matching.is_empty(),
+        "expected unstaked event to be emitted"
+    );
 }
 
 #[test]
@@ -213,8 +220,13 @@ fn test_delegate_emits_event() {
     ctx.env.mock_all_auths();
     ctx.client().stake(&ctx.alice, &STAKE_AMOUNT, &None);
     ctx.client().delegate(&ctx.alice, &ctx.bob);
-    let matching = ctx.env.events_matching((soroban_sdk::symbol_short!("delegated"),));
-    assert!(!matching.is_empty(), "expected delegated event to be emitted");
+    let matching = ctx
+        .env
+        .events_matching((soroban_sdk::symbol_short!("delegated"),));
+    assert!(
+        !matching.is_empty(),
+        "expected delegated event to be emitted"
+    );
 }
 
 #[test]

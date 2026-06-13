@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "backend",
     "contracts/crucible",
     "contracts/treasury",
     "crucible-macros",

@@ -1,8 +1,8 @@
 #![cfg(test)]
 extern crate std;
 
-use crucible::prelude::*;
 use crucible::assert_reverts;
+use crucible::prelude::*;
 
 use crate::{make_meta_tx, Gasless, GaslessClient, MetaTx};
 
@@ -118,7 +118,10 @@ fn test_expired_meta_tx_reverts() {
     ctx.env.mock_all_auths();
     // Advance time past the deadline.
     ctx.env.advance_time(Duration::seconds(3_601));
-    assert_reverts!(ctx.client().execute(&ctx.relayer, &ctx.meta_tx(0)), "expired");
+    assert_reverts!(
+        ctx.client().execute(&ctx.relayer, &ctx.meta_tx(0)),
+        "expired"
+    );
 }
 
 #[test]
@@ -158,8 +161,13 @@ fn test_execute_emits_event() {
     let ctx = Ctx::setup();
     ctx.env.mock_all_auths();
     ctx.client().execute(&ctx.relayer, &ctx.meta_tx(0));
-    let matching = ctx.env.events_matching((soroban_sdk::symbol_short!("executed"),));
-    assert!(!matching.is_empty(), "expected executed event to be emitted");
+    let matching = ctx
+        .env
+        .events_matching((soroban_sdk::symbol_short!("executed"),));
+    assert!(
+        !matching.is_empty(),
+        "expected executed event to be emitted"
+    );
 }
 
 #[test]
