@@ -1,5 +1,5 @@
-use soroban_sdk::testutils::{ConstructorArgs, ContractFunctionSet};
-use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol, Val};
+use soroban_sdk::testutils::ContractFunctionSet;
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Val};
 
 #[contracttype]
 #[derive(Clone)]
@@ -121,17 +121,6 @@ impl ContractFunctionSet for ReputationContract {
     }
 }
 
-impl ConstructorArgs for (Address,) {
-    fn __private_constructor_args_field_0(&self) -> Address {
-        self.0.clone()
-    }
-}
-
-impl ConstructorArgs for () {
-    fn __private_constructor_args_field_0(&self) -> Address {
-        panic!("ConstructorArgs for () not implemented for ReputationContract")
-    }
-}
 
 // We'll implement a client struct similar to MockToken for ease of use.
 #[derive(Clone)]
@@ -162,7 +151,6 @@ impl ReputationContractClient {
 
     /// Set the reputation of an account to a specific score. Admin only.
     pub fn set_reputation(&self, admin: &Address, account: &Address, score: i32) {
-        admin.require_auth();
         self.env.mock_all_auths();
         let client = soroban_sdk::contractclient::ContractClient::new(&self.env, &self.address);
         client.call(&symbol_short!("set_reputation"), &(admin, account, score));
@@ -170,7 +158,6 @@ impl ReputationContractClient {
 
     /// Increase the reputation of an account by a given amount. Admin only.
     pub fn increase_reputation(&self, admin: &Address, account: &Address, amount: i32) {
-        admin.require_auth();
         self.env.mock_all_auths();
         let client = soroban_sdk::contractclient::ContractClient::new(&self.env, &self.address);
         client.call(
@@ -181,7 +168,6 @@ impl ReputationContractClient {
 
     /// Decrease the reputation of an account by a given amount. Admin only.
     pub fn decrease_reputation(&self, admin: &Address, account: &Address, amount: i32) {
-        admin.require_auth();
         self.env.mock_all_auths();
         let client = soroban_sdk::contractclient::ContractClient::new(&self.env, &self.address);
         client.call(
@@ -207,8 +193,6 @@ impl ReputationContractClient {
         account: &Address,
         amount: i32,
     ) -> Result<(), ()> {
-        admin.require_auth();
-        self.env.mock_all_auths();
         let client = soroban_sdk::contractclient::ContractClient::new(&self.env, &self.address);
         match client.try_call(
             &symbol_short!("increase_reputation"),
@@ -223,19 +207,22 @@ impl ReputationContractClient {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::env::MockEnv;
-    use soroban_sdk::Address;
-    use std::panic;
+    use crate::env::{MockEnv, Stroops};
 
     #[test]
     fn test_reputation_contract() {
-        let env = MockEnv::builder().build();
+        // Create accounts before lookup — fixes issue #493
+        let env = MockEnv::builder()
+            .with_account("admin", Stroops::xlm(100))
+            .with_account("user", Stroops::xlm(100))
+            .build();
+
         let admin = env.account("admin");
         let user = env.account("user");
 
-        // Deploy the reputation contract
-        let address = env.register_contract(None, ReputationContract::new());
-        let client = ReputationContractClient::new(&env.inner(), &address);
+        // Deploy the reputation contract via the inner Soroban env
+        let address = env.inner().register_contract(None, ReputationContract::new());
+        let client = ReputationContractClient::new(env.inner(), &address);
 
         // Initialize with admin
         client.initialize(&admin.address());
@@ -251,12 +238,28 @@ mod test {
         // Decrease reputation
         client.decrease_reputation(&admin.address(), &user.address(), 30);
         assert_eq!(client.get_reputation(&user.address()), 120);
+    }
 
-        // Non-admin cannot change reputation
-        env.set_auths(&[user.auth()]);
-        let result = panic::catch_unwind(|| {
-            client.increase_reputation(&user.address(), &user.address(), 10);
-        });
-        assert!(result.is_err());
+    #[test]
+    fn test_reputation_non_admin_cannot_set() {
+        let env = MockEnv::builder()
+            .with_account("admin", Stroops::xlm(100))
+            .with_account("user", Stroops::xlm(100))
+            .build();
+
+        let admin = env.account("admin");
+        let user = env.account("user");
+
+        let address = env.inner().register_contract(None, ReputationContract::new());
+        let client = ReputationContractClient::new(env.inner(), &address);
+
+        client.initialize(&admin.address());
+
+        // Non-admin should fail: try_increase_reputation returns Err when caller != admin
+        let result = client.try_increase_reputation(&user.address(), &user.address(), 10);
+        assert!(result.is_err(), "non-admin should not be able to increase reputation");
+
+        // Reputation should remain at default 0
+        assert_eq!(client.get_reputation(&user.address()), 0);
     }
 }
