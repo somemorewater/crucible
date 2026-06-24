@@ -24,10 +24,13 @@
 #![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 use crate::services::log_aggregator::LogEntry;
 

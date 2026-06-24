@@ -1,32 +1,3 @@
-//! Application configuration.
-//!
-//! - [`Config`] — environment-variable-based startup configuration.
-//! - [`AppConfig`] — hot-reloadable runtime configuration.
-//! - [`reload`] — [`ConfigManager`] and Axum handlers for live config updates.
-
-pub mod reload;
-
-use config::{Config, Environment as ConfigEnvironment, File, FileFormat};
-use serde::{Deserialize, Serialize};
-use std::env;
-
-/// Environment-based application configuration.
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct AppConfig {
-    pub server: ServerConfig,
-    pub database: DatabaseConfig,
-    pub redis: RedisConfig,
-/// Startup configuration loaded from environment variables.
-///
-/// Read once at process start. For values that change at runtime without a
-/// restart, see [`AppConfig`] and [`reload::ConfigManager`].
-#[derive(Debug, Deserialize, Clone)]
-pub struct Config {
-    pub database_url: String,
-    pub redis_url: String,
-    pub server_port: u16,
-    pub environment: String,
-    pub log_level: String,
 //! CONFIG APPROACH: Option A — layered config crate
 //! Rationale: Using the `config` crate provides a robust, layered approach where environment-specific
 //! defaults are cleanly defined in TOML files, while sensitive secrets and infrastructure-specific
@@ -34,12 +5,15 @@ pub struct Config {
 //! ensures typed nested structures, and makes local development frictionless without compromising
 //! production security.
 
+use config::{Config, Environment as ConfigEnvironment, File, FileFormat};
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 pub mod database;
 pub mod error;
 pub mod observability;
 pub mod redis;
+pub mod reload;
 pub mod server;
 
 #[cfg(test)]
@@ -169,94 +143,27 @@ impl AppConfig {
                 "TLS configuration is strictly required in the Production environment.".to_string(),
             );
         }
-    }
-}
 
-/// Environment-based application configuration.
-/// Simple environment-based config loader (used by main.rs).
-#[derive(Debug, Deserialize, Clone)]
-pub struct Config {
-    pub database_url: String,
-    pub redis_url: String,
-    pub server_port: u16,
-    pub environment: String,
-    pub log_level: String,
-}
+        if self.database.url.is_empty() {
+            errors.push("Database URL cannot be empty.".to_string());
+        }
+
+        if self.redis.url.is_empty() {
+            errors.push("Redis URL cannot be empty.".to_string());
+        }
+
+        if self.database.max_connections == 0 {
+            errors.push("Database max_connections must be greater than 0.".to_string());
+        }
+
+        if self.redis.pool_size == 0 {
+            errors.push("Redis pool_size must be greater than 0.".to_string());
+        }
+
+        if !errors.is_empty() {
+            return Err(ConfigError::ValidationError(errors));
+        }
 
         Ok(())
-impl Config {
-    /// Loads configuration from environment variables.
-    pub fn from_env() -> Result<Self, anyhow::Error> {
-        dotenvy::dotenv().ok();
-    }
-}
-
-        Ok(Config {
-            database_url: env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/backend".into()),
-            redis_url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".into()),
-            server_port: env::var("PORT")
-                .unwrap_or_else(|_| "3000".into())
-                .parse()?,
-            environment: env::var("APP_ENV").unwrap_or_else(|_| "development".into()),
-            log_level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".into()),
-        })
-    /// Load configuration from environment variables (`.env` file optional).
-
-            redis_url: env::var("REDIS_URL")
-                .unwrap_or_else(|_| "redis://localhost:6379".into()),
-            environment: env::var("APP_ENV")
-                .unwrap_or_else(|_| "development".into()),
-            log_level: env::var("LOG_LEVEL")
-                .unwrap_or_else(|_| "info".into()),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// AppConfig — hot-reloadable runtime configuration
-
-/// Server bind configuration.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ServerConfig {
-    pub host: String,
-    pub port: u16,
-}
-
-/// Database pool configuration.
-pub struct DatabaseConfig {
-    pub url: String,
-    pub max_connections: u32,
-}
-
-/// Redis connection configuration.
-pub struct RedisConfig {
-}
-
-/// Live application configuration that can be hot-reloaded at runtime.
-/// All fields have sensible defaults so the application starts without any
-/// external configuration source. Use [`reload::ConfigManager`] to update
-/// these values without restarting the process.
-    /// Tracing / log filter directive (e.g. `"backend=debug"`).
-    /// Maximum number of database connections in the pool.
-    /// Request timeout in seconds.
-    pub request_timeout_secs: u64,
-    /// Whether the maintenance mode banner is shown.
-    pub maintenance_mode: bool,
-}
-
-        Self {
-            server: ServerConfig {
-                host: "0.0.0.0".to_string(),
-                port: 3000,
-            database: DatabaseConfig {
-                url: "postgres://postgres:postgres@localhost:5432/crucible".to_string(),
-                max_connections: 10,
-            redis: RedisConfig {
-                url: "redis://127.0.0.1:6379".to_string(),
-            log_level: "backend=debug,tower_http=debug".to_string(),
-            max_connections: 10,
-            request_timeout_secs: 30,
-            maintenance_mode: false,
-        }
     }
 }

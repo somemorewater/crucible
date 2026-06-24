@@ -172,7 +172,7 @@ impl BusinessMetricsService {
         };
 
         let tags_json = serde_json::to_value(&tags)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
 
         let category_str = serde_json::to_string(&category)
             .map_err(|e| AppError::InternalError(e.to_string()))?;
@@ -199,7 +199,7 @@ impl BusinessMetricsService {
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to record metric");
-            AppError::DatabaseError(e)
+            AppError::Database(e)
         })?;
 
         let metric = BusinessMetric {
@@ -270,7 +270,7 @@ impl BusinessMetricsService {
             };
 
             let tags_json = serde_json::to_value(&tags)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
+                .map_err(|e| AppError::InternalError(e.to_string()))?;
 
             sqlx::query(
                 r#"
@@ -471,7 +471,7 @@ impl BusinessMetricsService {
             .bind(cutoff)
             .execute(&self.db)
             .await
-            .map_err(|e| AppError::DatabaseError(e))?;
+            .map_err(AppError::Database)?;
 
         let deleted = result.rows_affected();
         info!(deleted, retention_days, "Pruned old metrics");
@@ -693,26 +693,22 @@ mod tests {
         let summary = MetricsSummary {
             total_metrics: 42,
             categories: HashMap::from([("revenue".to_string(), 10i64)]),
-
-    fn test_metric_category_serialization() {
-        let cat = MetricCategory::Revenue;
-        let json = serde_json::to_string(&cat).unwrap();
-    }
-
-        let src = MetricSource::default();
-        assert_eq!(src, MetricSource::Database);
-    }
-
-            name: "revenue".to_string(),
-            tags: HashMap::from([("region".into(), "us-east".into())]),
-        };
-        assert!(json.contains("USD"));
-    }
-
-            categories: HashMap::from([("revenue".into(), 10i64)]),
             latest_timestamp: Some(Utc::now()),
         };
         let json = serde_json::to_string(&summary).unwrap();
         assert!(json.contains("42"));
+    }
+
+    #[test]
+    fn test_metric_category_serialization() {
+        let cat = MetricCategory::Revenue;
+        let json = serde_json::to_string(&cat).unwrap();
+        assert!(json.contains("revenue"));
+    }
+
+    #[test]
+    fn test_metric_source_default() {
+        let src = MetricSource::default();
+        assert_eq!(src, MetricSource::Database);
     }
 }
