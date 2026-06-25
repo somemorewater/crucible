@@ -101,8 +101,14 @@ impl Treasury {
     }
 
     /// Withdraw tokens from the treasury to a destination address.
-    /// `signers` must include >= quorum admin addresses.
+    /// `signers` must include >= quorum admin addresses, each of which must authorize.
     pub fn withdraw(env: Env, to: Address, token: Address, amount: i128, signers: Vec<Address>) {
+        // Require authorization from every signer before checking quorum.
+        // This prevents passing arbitrary admin addresses without real signatures.
+        for s in signers.iter() {
+            s.require_auth();
+        }
+
         // Verify quorum
         let quorum: u32 = env.storage().instance().get(&DataKey::Quorum).unwrap();
         let admins: Vec<Address> = env.storage().instance().get(&DataKey::Admins).unwrap();
