@@ -1,4 +1,4 @@
-﻿//! # Database Backup and Restore Service
+//! # Database Backup and Restore Service
 //!
 //! Standalone binary that exposes HTTP endpoints for triggering PostgreSQL
 //! backups, listing existing backups, and restoring from a chosen snapshot.
@@ -43,13 +43,7 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    routing::{get, post},
-    Json, Router,
-};
+
 
 // ---------------------------------------------------------------------------
 // Error types

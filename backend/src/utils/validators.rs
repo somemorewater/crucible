@@ -77,10 +77,10 @@ impl ValidationContext {
     }
 
     pub fn add_errors(&mut self, errors: Vec<ValidationError>) {
-        self.errors.extend(errors);
         if !errors.is_empty() {
             self.is_valid = false;
         }
+        self.errors.extend(errors);
     }
 
     pub fn is_valid(&self) -> bool {
@@ -118,9 +118,9 @@ impl StringValidator {
 
     /// Validate string matches regex pattern
     pub fn regex(value: &str, pattern: &str) -> ValidationResult {
-        match Regex::new(pattern) {
+        match regex::Regex::new(pattern) {
             Ok(re) => {
-                if re.is_match(value) {
+                if regex::Regex::is_match(&re, value) {
                     ValidationResult::Valid
                 } else {
                     ValidationResult::Invalid(format!("string does not match pattern '{}'", pattern))
@@ -217,7 +217,7 @@ pub struct DateTimeValidator;
 
 impl DateTimeValidator {
     /// Validate date/time string can be parsed
-    pub fn parse_datetime(value: &str) -> Result<DateTime<Utc>, ChronoParseError> {
+    pub fn parse_datetime(value: &str) -> Result<DateTime<Utc>, String> {
         // Try common datetime formats
         let formats = [
             "%Y-%m-%dT%H:%M:%S%.fZ",
@@ -230,16 +230,16 @@ impl DateTimeValidator {
         
         for format in &formats {
             if let Ok(dt) = DateTime::parse_from_str(value, format) {
-                return Ok(dt.into_utc());
+                return Ok(dt.to_utc());
             }
         }
         
         // Try ISO 8601 basic format
         if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
-            return Ok(dt.into_utc());
+            return Ok(dt.to_utc());
         }
         
-        Err(ChronoParseError::ParseError)
+        Err("could not parse datetime".to_string())
     }
 
     /// Validate datetime is in the past
@@ -327,7 +327,7 @@ impl ValidationHelpers {
         for (field, field_rules) in rules {
             if let Some(field_value) = json_value.get(&field) {
                 for rule in field_rules {
-                    let result = Self::apply_rule(field_value, rule);
+                    let result = Self::apply_rule(field_value, &rule);
                     if let ValidationResult::Invalid(msg) | ValidationResult::Error(msg) = result {
                         context.add_error(ValidationError::new(
                             field.clone(),

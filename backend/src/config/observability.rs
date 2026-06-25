@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tracing::Level;
 
-/// Observability configuration (logs, tracing, metrics).
+/// Observability configuration (logs, tracing, metrics).\
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ObservabilityConfig {
     /// Logging level (e.g., "trace", "debug", "info", "warn", "error")
@@ -28,6 +28,8 @@ impl ObservabilityConfig {
     /// Development uses a pretty formatter, while Staging/Production use JSON.
     pub fn init_tracing(&self, env: crate::config::Environment) {
         crate::utils::logger::init_tracing(&self.log_level, env);
+    }
+
     /// Returns true when logs should be emitted as JSON.
     pub fn json_logs(&self, env: crate::config::Environment) -> bool {
         matches!(

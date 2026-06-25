@@ -9,9 +9,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use thiserror::Error;
 use tracing::{debug, info, warn, instrument};
-use crate::services::tracing::TracingService;
-
-use crate::services::tracing::TracingService;
 
 // ---------------------------------------------------------------------------
 // Error type

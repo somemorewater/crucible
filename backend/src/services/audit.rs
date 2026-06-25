@@ -5,11 +5,8 @@
 
 use axum::extract::State;
 use axum::response::IntoResponse;
-use axum::{Json, Router, routing::post};
-use chrono::Utc;
 use axum::{
-    extract::{Path, Query, State},
-    response::IntoResponse,
+    extract::{Path, Query},
     routing::{get, post},
     Json, Router,
 };
@@ -53,21 +50,21 @@ impl AuditService {
     /// Log an audit event to the database and enqueue it for async processing.
     #[instrument(skip(self))]
     pub async fn log_event(&self, event: AuditEvent) -> Result<(), AppError> {
-        sqlx::query!(
+        sqlx::query(
             r#"INSERT INTO audit_logs (event_type, user_id, details, timestamp)
                VALUES ($1, $2, $3, $4)"#,
-            event.event_type,
-            event.user_id,
-            event.details,
-            event.timestamp
         )
+        .bind(&event.event_type)
+        .bind(&event.user_id)
+        .bind(&event.details)
+        .bind(event.timestamp)
         .execute(&self.db)
         .await
         .map_err(AppError::Database)?;
 
         let mut conn = self.redis.get_async_connection().await.map_err(AppError::Redis)?;
         let event_json = serde_json::to_string(&event).map_err(AppError::Serialization)?;
-        conn.lpush("audit_queue", event_json).await.map_err(AppError::Redis)?;
+        conn.lpush::<_, _, ()>("audit_queue", event_json).await.map_err(AppError::Redis)?;
 
         info!(event_type = %event.event_type, "Audit event logged");
         Ok(())
@@ -83,76 +80,52 @@ impl AuditService {
         end_time: Option<chrono::DateTime<chrono::Utc>>,
         limit: Option<i64>,
     ) -> Result<Vec<AuditEvent>, AppError> {
-        let mut query = String::from(
-            r#"SELECT event_type, user_id, details, timestamp FROM audit_logs WHERE 1=1"#
+        let mut query_builder = sqlx::QueryBuilder::new(
+            "SELECT event_type, user_id, details, timestamp FROM audit_logs WHERE 1=1"
         );
-        let mut params = Vec::new();
-        let mut param_index = 1;
-        
+
         if let Some(event_type) = event_type {
-            query.push_str(&format!(" AND event_type = ${}::TEXT", param_index));
-            params.push(event_type);
-            param_index += 1;
+            query_builder.push(" AND event_type = ");
+            query_builder.push_bind(event_type);
         }
-        
+
         if let Some(user_id) = user_id {
-            query.push_str(&format!(" AND user_id = ${}", param_index));
-            params.push(user_id);
-            param_index += 1;
+            query_builder.push(" AND user_id = ");
+            query_builder.push_bind(user_id);
         }
-        
+
         if let Some(start_time) = start_time {
-            query.push_str(&format!(" AND timestamp >= ${}", param_index));
-            params.push(start_time);
-            param_index += 1;
+            query_builder.push(" AND timestamp >= ");
+            query_builder.push_bind(start_time);
         }
-        
+
         if let Some(end_time) = end_time {
-            query.push_str(&format!(" AND timestamp <= ${}", param_index));
-            params.push(end_time);
-            param_index += 1;
+            query_builder.push(" AND timestamp <= ");
+            query_builder.push_bind(end_time);
         }
-        
-        query.push_str(" ORDER BY timestamp DESC");
-        
+
+        query_builder.push(" ORDER BY timestamp DESC");
+
         if let Some(limit) = limit {
-            query.push_str(&format!(" LIMIT {}", limit));
+            query_builder.push(" LIMIT ");
+            query_builder.push_bind(limit);
         }
-        
-        let rows = sqlx::query(&query)
-            .bind_all(params)
-            .fetch_all(&self.db)
-            .await
-            .map_err(|e| AppError::db(e))?;
-        
+
+        let query = query_builder.build();
+        let rows = query.fetch_all(&self.db).await.map_err(AppError::Database)?;
+
         let mut results = Vec::new();
         for row in rows {
-            let event_type_str = row.get::<&str, _>("event_type");
-            let event_type = match event_type_str {
-                "authentication" => AuditEventType::Authentication,
-                "authorization" => AuditEventType::Authorization,
-                "data_access" => AuditEventType::DataAccess,
-                "configuration_change" => AuditEventType::ConfigurationChange,
-                "maintenance" => AuditEventType::Maintenance,
-                "security_incident" => AuditEventType::SecurityIncident,
-                "api_access" => AuditEventType::ApiAccess,
-                s if s.starts_with("custom:") => {
-                    let custom_name = s[7..].to_string();
-                    AuditEventType::Custom(custom_name)
-                }
-                _ => continue,
-            };
-            
+            use sqlx::Row;
             let event = AuditEvent {
-                event_type,
+                event_type: row.get::<String, _>("event_type"),
                 user_id: row.get::<Option<String>, _>("user_id"),
-                details: serde_json::from_value(row.get::<serde_json::Value, _>("details"))
-                    .map_err(|e| AppError::serialization(e))?,
+                details: row.get::<serde_json::Value, _>("details"),
                 timestamp: row.get::<chrono::DateTime<chrono::Utc>, _>("timestamp"),
             };
             results.push(event);
         }
-        
+
         Ok(results)
     }
 
@@ -167,23 +140,31 @@ impl AuditService {
         limit: Option<i64>,
     ) -> Result<Vec<AuditEvent>, AppError> {
         self.search_audit_logs(event_type, user_id, start_time, end_time, limit).await
+    }
+
     /// Return the most recent audit events, optionally filtered by event type.
     pub async fn list_events(
+        &self,
+        event_type: Option<String>,
         limit: u32,
     ) -> Result<Vec<AuditEventRecord>, AppError> {
         let limit = limit.clamp(1, 200) as i64;
 
         let rows = if let Some(event_type) = event_type {
             sqlx::query_as::<_, AuditEventRecord>(
-                "SELECT id, event_type, user_id, details, timestamp FROM audit_logs
-                 WHERE event_type = $1 ORDER BY timestamp DESC LIMIT $2",
+                "SELECT id, event_type, user_id, details, timestamp FROM audit_logs WHERE event_type = $1 ORDER BY timestamp DESC LIMIT $2",
             )
             .bind(event_type)
             .bind(limit)
+            .fetch_all(&self.db)
             .await?
         } else {
-                 ORDER BY timestamp DESC LIMIT $1",
+            sqlx::query_as::<_, AuditEventRecord>(
+                "SELECT id, event_type, user_id, details, timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT $1",
             )
+            .bind(limit)
+            .fetch_all(&self.db)
+            .await?
         };
 
         Ok(rows)

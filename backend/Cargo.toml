@@ -70,6 +70,7 @@ rust_decimal = { version = "1.35", features = ["serde", "db-postgres"] }
 rust_decimal_macros = "1.35"
 arc-swap = "1.7"
 stellar-xdr = { version = "21.0", features = ["std"] }
+soroban-sdk = { workspace = true }
 base64 = "0.22"
 validator = { version = "0.19", features = ["derive"] }
 async-trait = "0.1"
@@ -89,6 +90,8 @@ cron = "0.12"
 
 # Optional mock support for tests
 mockall = { version = "0.13", optional = true }
+sha2 = "0.11.0"
+regex = "1.12.4"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }

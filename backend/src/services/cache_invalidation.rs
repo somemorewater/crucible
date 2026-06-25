@@ -4,6 +4,8 @@
 //! to ensure data consistency between the database and cache layers.
 
 use std::collections::HashMap;
+use redis::AsyncCommands;
+use serde::{Serialize, Deserialize};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
@@ -23,7 +25,7 @@ pub enum InvalidationStrategy {
 }
 
 /// Cache invalidation event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CacheInvalidationEvent {
     /// Strategy to use for invalidation
     pub strategy: InvalidationStrategy,
@@ -129,7 +131,7 @@ impl CacheInvalidationManager {
             .await?;
         
         if !keys.is_empty() {
-            self.invalidate_keys(keys).await?;
+            self.invalidate_keys(keys.clone()).await?;
             info!(pattern = %pattern, count = keys.len(), "Invalidated keys by pattern");
         }
         
@@ -153,7 +155,7 @@ impl CacheInvalidationManager {
             .await?;
         
         if !keys.is_empty() {
-            self.invalidate_keys(keys).await?;
+            self.invalidate_keys(keys.clone()).await?;
             info!(tag = %tag, count = keys.len(), "Invalidated keys by tag");
         }
         

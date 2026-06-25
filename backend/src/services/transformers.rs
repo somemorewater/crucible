@@ -13,7 +13,7 @@ impl DataTransformer {
     pub fn transform(&self, mut input: Value) -> Value {
         if let Value::Object(map) = &mut input {
             let mut normalized = Map::new();
-            for (k, v) in map.drain() {
+            for (k, v) in std::mem::take(map).into_iter() {
                 normalized.insert(k.to_lowercase(), v);
             }
             return Value::Object(normalized);

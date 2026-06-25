@@ -339,7 +339,7 @@ impl ContractExecutor for SorobanContractExecutor {
         env.mock_all_auths();
         configure_ledger(&env, execution.ledger_sequence, execution.ledger_timestamp);
 
-        let mut budget = env.budget();
+        let mut budget = env.cost_estimate().budget();
         budget.reset_limits(
             execution.limits.max_cpu_instructions,
             execution.limits.max_memory_bytes,
@@ -360,14 +360,19 @@ impl ContractExecutor for SorobanContractExecutor {
         let contract_id = Some(format!("{contract_id:?}"));
 
         match invocation {
-            Ok(value) => Ok(RawExecution {
-                status: ExecutionStatus::Succeeded,
-                contract_id,
-                result_xdr: Some(value.to_xdr(&env).to_alloc_vec()),
-                diagnostics: Vec::new(),
-                cpu_instructions,
-                memory_bytes,
-            }),
+            Ok(value) => {
+                let xdr_bytes = value.to_xdr(&env);
+                let mut vec = vec![0u8; xdr_bytes.len() as usize];
+                xdr_bytes.copy_into_slice(&mut vec);
+                Ok(RawExecution {
+                    status: ExecutionStatus::Succeeded,
+                    contract_id,
+                    result_xdr: Some(vec),
+                    diagnostics: Vec::new(),
+                    cpu_instructions,
+                    memory_bytes,
+                })
+            },
             Err(panic) => Ok(RawExecution {
                 status: ExecutionStatus::Reverted,
                 contract_id,

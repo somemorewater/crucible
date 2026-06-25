@@ -159,7 +159,7 @@ impl PermissionChecker {
 
         // Cache result
         if let Ok(mut conn) = self.redis.get_multiplexed_async_connection().await {
-            let _ = conn
+            let _: Result<(), _> = conn
                 .set_ex(
                     cache_key,
                     serde_json::to_string(&role).unwrap(),
@@ -185,7 +185,7 @@ impl PermissionChecker {
         if !keys.is_empty() {
             redis::cmd("DEL")
                 .arg(&keys)
-                .query_async(&mut conn)
+                .query_async::<()>(&mut conn)
                 .await?;
         }
 

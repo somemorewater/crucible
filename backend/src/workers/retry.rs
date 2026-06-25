@@ -299,7 +299,7 @@ impl RetryPolicy {
             retry.base_delay_ms = self.base_delay.as_millis() as u64,
         )
     )]
-    pub async fn retry<F, Fut, T, E>(&self, mut operation: F) -> Result<T, RetryError<E>>
+    pub async fn retry<F, Fut, T, E>(&self, operation: F) -> Result<T, RetryError<E>>
     where
         F: FnMut() -> Fut,
         Fut: Future<Output = Result<T, E>>,

@@ -9,12 +9,11 @@ use chrono::{DateTime, Duration, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 use utoipa::ToSchema;
+use sqlx::FromRow;
 
 use crate::error::AppError;
 
@@ -47,12 +46,10 @@ pub enum MetricCategory {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, ToSchema)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MetricSource {
     OnChain,
     OffChain,
-    #[default]
     Database,
     ExternalApi,
     #[default]
@@ -82,25 +79,6 @@ impl MetricSource {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BusinessMetric {
-    pub id: Uuid,
-    pub name: String,
-    pub value: Decimal,
-    pub unit: String,
-    pub category: MetricCategory,
-    pub tags: HashMap<String, String>,
-    pub recorded_at: DateTime<Utc>,
-    pub source: MetricSource,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MetricsSummary {
-    pub total_metrics: i64,
-    pub categories: HashMap<String, i64>,
-    pub latest_timestamp: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsQuery {
     pub category: Option<MetricCategory>,
     pub from: Option<DateTime<Utc>>,
@@ -110,10 +88,10 @@ pub struct MetricsQuery {
     pub offset: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct MetricsSummary {
     pub total_metrics: i64,
-    pub categories: HashMap<String, i64>,
+    pub categories: std::collections::HashMap<String, i64>,
     pub latest_timestamp: Option<DateTime<Utc>>,
 }
 
@@ -177,6 +155,7 @@ impl BusinessMetricsService {
         let category_str = serde_json::to_string(&category)
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         let source_str = serde_json::to_string(&source)
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
         // Store Decimal as string to avoid sqlx type issues
         let value_str = value.to_string();
 
@@ -193,7 +172,6 @@ impl BusinessMetricsService {
         .bind(&category_str)
         .bind(&tags_json)
         .bind(now)
-        .bind(source_str)
         .bind(&source_str)
         .execute(&self.db)
         .await
@@ -353,11 +331,6 @@ impl BusinessMetricsService {
             })
             .collect();
 
-        let mut metrics = Vec::with_capacity(rows.len());
-        for row in rows {
-            metrics.push(BusinessMetric::from_row(&row)?);
-        }
-
         Ok((metrics, total))
     }
 
@@ -411,7 +384,6 @@ impl BusinessMetricsService {
         .await
         .map_err(AppError::Database)?;
 
-        let result: Option<Decimal> = row.try_get("sum")?;
         Ok(result)
     }
 
@@ -447,11 +419,7 @@ impl BusinessMetricsService {
             BusinessMetric { id, name, value, unit, category, tags, recorded_at, source }
         });
 
-        if let Some(r) = row {
-            Ok(Some(BusinessMetric::from_row(&r)?))
-        } else {
-            Ok(None)
-        }
+        Ok(metric)
     }
 
     /// Remove metrics older than the retention period.
@@ -459,7 +427,7 @@ impl BusinessMetricsService {
     pub async fn prune_old_metrics(&self, retention_days: i64) -> Result<u64, AppError> {
         let cutoff = Utc::now() - Duration::days(retention_days);
 
-        let deleted = sqlx::query(
+        let _deleted = sqlx::query(
             "DELETE FROM business_metrics WHERE recorded_at < $1",
         )
         .bind(cutoff)
@@ -693,26 +661,22 @@ mod tests {
         let summary = MetricsSummary {
             total_metrics: 42,
             categories: HashMap::from([("revenue".to_string(), 10i64)]),
-
-    fn test_metric_category_serialization() {
-        let cat = MetricCategory::Revenue;
-        let json = serde_json::to_string(&cat).unwrap();
-    }
-
-        let src = MetricSource::default();
-        assert_eq!(src, MetricSource::Database);
-    }
-
-            name: "revenue".to_string(),
-            tags: HashMap::from([("region".into(), "us-east".into())]),
-        };
-        assert!(json.contains("USD"));
-    }
-
-            categories: HashMap::from([("revenue".into(), 10i64)]),
             latest_timestamp: Some(Utc::now()),
         };
         let json = serde_json::to_string(&summary).unwrap();
         assert!(json.contains("42"));
+    }
+
+    #[test]
+    fn test_metric_category_serialization() {
+        let cat = MetricCategory::Revenue;
+        let json = serde_json::to_string(&cat).unwrap();
+        assert!(json.contains("revenue"));
+    }
+
+    #[test]
+    fn test_metric_source_default() {
+        let src = MetricSource::default();
+        assert_eq!(src, MetricSource::Database);
     }
 }

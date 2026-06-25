@@ -4,6 +4,7 @@
 //! enqueued with different priority levels. Higher priority jobs are processed before
 //! lower priority ones.
 
+use serde::{Serialize, Deserialize};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::sync::{Arc, Mutex};
@@ -39,7 +40,7 @@ impl std::fmt::Display for JobPriority {
 }
 
 /// A job with priority information
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct PriorityJob<T> {
     /// The actual job payload
     pub payload: T,
@@ -121,7 +122,7 @@ impl<T> PriorityQueue<T> {
 }
 
 /// Priority-aware job processor
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PriorityProcessor<T> {
     queue: PriorityQueue<T>,
     /// Channel for receiving jobs from external sources

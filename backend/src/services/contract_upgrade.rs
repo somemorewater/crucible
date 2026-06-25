@@ -448,7 +448,8 @@ fn plan_id(request: &ContractUpgradeRequest) -> String {
     hasher.update(request.current_wasm_hash.as_bytes());
     hasher.update(request.target_wasm_hash.as_bytes());
     let digest = hasher.finalize();
-    format!("upg-{:x}", digest)[..20].to_string()
+    let hex_digest = digest.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    format!("upg-{}", hex_digest)[..20].to_string()
 }
 
 #[cfg(test)]

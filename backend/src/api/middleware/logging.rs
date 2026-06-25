@@ -26,6 +26,7 @@ pub async fn logging_middleware(
     let path = uri.path().to_string();
     let span = TracingService::http_request_span(method.as_str(), &path, None);
 
+    let value = span.clone();
     async move {
         // Log the incoming request
         tracing::debug!("Incoming request");
@@ -34,9 +35,9 @@ pub async fn logging_middleware(
 
         let latency = start_time.elapsed();
         let status = response.status();
-        span.record("http.status_code", status.as_u16());
+        value.record("http.status_code", status.as_u16());
         if status.is_server_error() {
-            TracingService::record_error(&span, status.as_str(), "http_server_error");
+            TracingService::record_error(&value, status.as_str(), "http_server_error");
         }
 
         // Log the response

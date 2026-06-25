@@ -8,44 +8,13 @@
 //!   channel and atomically swaps the live config on every reload signal.
 //!
 //! # Redis protocol (ConfigWatcher)
-//! This module provides two complementary APIs:
-//! ## [`ConfigManager`] — patch-based updates
-//! Wraps [`AppConfig`] in an [`arc_swap::ArcSwap`] for lock-free reads.
-//! Supports atomic replacement via [`ConfigManager::reload`] and partial
-//! JSON-patch updates via [`ConfigManager::update_from_patch`].
-//! ## [`ConfigWatcher`] — Redis pub/sub driven reload
-//! Subscribes to the `config:reload` Redis channel. On every message it
-//! fetches the JSON stored at `config:current`, deserialises it, and
-//! atomically swaps the in-memory value. All readers that hold a
-//! [`ConfigHandle`] see the new values on their next read.
-//! # Axum handlers
-//! | Route | Handler | Description |
-//! |---|---|---|
-//! | `GET /api/config` | [`handle_get_config`] | Return current config as JSON |
-//! | `POST /api/config/reload` | [`handle_reload`] | Reload config from `config.json` |
-//! # Redis protocol
 //!
 //! ```text
-//! SET config:current '{"log_level":"info","max_connections":50,...}'
+//! SET config:current '{\"log_level\":\"info\",\"max_connections\":50,...}'
 //! PUBLISH config:reload "reload"
 //! ```
 
 #![allow(dead_code)]
-//!
-//! # Example
-//! ```rust,no_run
-//! use std::sync::Arc;
-//! use backend::config::{AppConfig, reload::ConfigWatcher};
-//! # async fn example() {
-//! let watcher = Arc::new(ConfigWatcher::new(AppConfig::default()));
-//! let handle = watcher.handle();
-//! // Read the current config
-//! let cfg = handle.get().await;
-//! println!("log level: {}", cfg.log_level);
-//! // Trigger a manual reload
-//! watcher.reload(AppConfig { maintenance_mode: true, ..AppConfig::default() }).await;
-//! # }
-//! ```
 
 use std::sync::Arc;
 
@@ -61,150 +30,10 @@ use tracing::{error, info, instrument, warn};
 use crate::config::AppConfig;
 
 // ---------------------------------------------------------------------------
-// ConfigReloadError
+// ReloadError
 // ---------------------------------------------------------------------------
 
-/// Errors that can occur during configuration reload (ConfigManager).
-#[derive(Debug, Error)]
-pub enum ConfigReloadError {
-    #[error("Configuration load error: {0}")]
-    LoadError(#[from] ConfigError),
-}
-
-impl IntoResponse for ConfigReloadError {
-    fn into_response(self) -> axum::response::Response {
-        let status = StatusCode::INTERNAL_SERVER_ERROR;
-        let body = Json(serde_json::json!({
-            "error": self.to_string(),
-            "status": status.as_u16()
-        }));
-
-        (status, body).into_response()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// ConfigManager (ArcSwap-based, used by profiling handlers)
-// ---------------------------------------------------------------------------
-
-/// Manages hot-reloadable application configuration via `ArcSwap`.
-pub struct ConfigManager {
-    current_config: ArcSwap<BaseAppConfig>,
-}
-
-impl ConfigManager {
-    /// Create a new `ConfigManager` with the given initial configuration.
-    pub fn new(initial_config: AppConfig) -> Self {
-        Self {
-            current_config: ArcSwap::from(Arc::new(initial_config)),
-        }
-    }
-
-    /// Return a snapshot of the current configuration.
-    pub fn load(&self) -> Arc<AppConfig> {
-        self.current_config.load_full()
-    }
-
-    /// Reload configuration from `config.json` in the current directory.
-    #[instrument(skip(self))]
-    pub async fn reload(&self) -> Result<(), ConfigReloadError> {
-        info!("Starting configuration reload...");
-
-        let config_path = "config.json";
-
-        if !std::path::Path::new(config_path).exists() {
-            warn!("config.json not found, skipping reload");
-            return Err(ConfigReloadError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "config.json not found",
-            )));
-        }
-
-        let content = tokio::fs::read_to_string(config_path).await?;
-        let new_config: AppConfig = serde_json::from_str(&content)?;
-
-        if new_config.database.url.is_empty() {
-            return Err(ConfigReloadError::Invalid(
-                "Database URL cannot be empty".to_string(),
-            ));
-        }
-
-        self.current_config.store(Arc::new(new_config));
-        info!("Configuration successfully reloaded");
-        Ok(())
-    }
-
-    /// Apply a JSON patch to the current configuration.
-    #[instrument(skip(self, patch))]
-    pub fn update_from_patch(&self, patch: Value) -> Result<(), ConfigReloadError> {
-        let current = self.load();
-        let mut current_json = serde_json::to_value(&*current)?;
-
-        if let Some(patch_obj) = patch.as_object() {
-            if let Some(current_obj) = current_json.as_object_mut() {
-                for (k, v) in patch_obj {
-                    if v.is_object()
-                        && current_obj.contains_key(k)
-                        && current_obj[k].is_object()
-                    {
-                        let sub_patch = v.as_object().unwrap();
-                        let sub_current =
-                            current_obj.get_mut(k).unwrap().as_object_mut().unwrap();
-                        for (sk, sv) in sub_patch {
-                            sub_current.insert(sk.clone(), sv.clone());
-                        }
-                    } else {
-                        current_obj.insert(k.clone(), v.clone());
-                    }
-                }
-            }
-        }
-
-        let new_config: AppConfig = serde_json::from_value(current_json)?;
-        self.current_config.store(Arc::new(new_config));
-        info!("Configuration updated via patch");
-        Ok(())
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Axum handlers for ConfigManager
-// ---------------------------------------------------------------------------
-
-/// `POST /api/config/reload` — trigger a configuration reload from disk.
-pub async fn handle_reload(
-    State(state): State<Arc<crate::api::handlers::profiling::AppState>>,
-) -> impl IntoResponse {
-    match state.config_manager.reload().await {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "status": "reloaded" })),
-        )
-            .into_response(),
-        Err(e) => e.into_response(),
-    }
-}
-
-/// `GET /api/config` — return the current configuration (sanitized).
-pub async fn handle_get_config(
-    State(manager): State<Arc<ConfigManager>>,
-) -> impl IntoResponse {
-    let config = state.config_manager.load();
-    Json(config)
-}
-
-/// Axum handler to get the current configuration (sanitized).
-pub async fn handle_get_config(
-    State(state): State<Arc<crate::api::handlers::profiling::AppState>>,
-) -> impl IntoResponse {
-    let config = state.config_manager.load();
-    // In a real app, we would sanitize sensitive fields like DB passwords
-    Json(config)
-// Error type
-// ---------------------------------------------------------------------------
-// ReloadError (ConfigWatcher)
-
-/// Errors that can occur during ConfigWatcher reload.
+/// Errors that can occur during configuration reload.
 #[derive(Debug, Error)]
 pub enum ReloadError {
     /// A Redis error occurred.
@@ -228,36 +57,6 @@ pub enum ReloadError {
     Invalid(String),
 }
 
-// HotAppConfig (used by ConfigWatcher)
-
-/// Live application configuration that can be hot-reloaded at runtime.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct HotAppConfig {
-    /// Tracing / log filter directive (e.g. `"backend=debug"`).
-    pub log_level: String,
-    /// Maximum number of database connections in the pool.
-    pub max_connections: u32,
-    /// Request timeout in seconds.
-    pub request_timeout_secs: u64,
-    /// Whether the maintenance mode banner is shown.
-    pub maintenance_mode: bool,
-    /// Redis key that stores the serialised [`HotAppConfig`] JSON.
-    pub redis_config_key: String,
-}
-
-impl Default for HotAppConfig {
-    fn default() -> Self {
-        Self {
-            log_level: "backend=debug,tower_http=debug".to_string(),
-            max_connections: 10,
-            request_timeout_secs: 30,
-            maintenance_mode: false,
-            redis_config_key: "config:current".to_string(),
-        }
-    }
-}
-
-// ConfigHandle
 impl IntoResponse for ReloadError {
     fn into_response(self) -> axum::response::Response {
         let status = match self {
@@ -270,6 +69,7 @@ impl IntoResponse for ReloadError {
 
 // ---------------------------------------------------------------------------
 // ConfigManager — ArcSwap-based, patch-capable
+// ---------------------------------------------------------------------------
 
 /// Manages hot-reloadable application configuration via lock-free reads.
 ///
@@ -281,6 +81,7 @@ pub struct ConfigManager {
 impl ConfigManager {
     /// Create a new manager with the given initial configuration.
     pub fn new(initial: AppConfig) -> Self {
+        Self {
             current: ArcSwap::from(Arc::new(initial)),
         }
     }
@@ -346,17 +147,51 @@ impl ConfigManager {
         }
 
         let new_config: AppConfig = serde_json::from_value(current_json)?;
+        self.current.store(Arc::new(new_config));
         info!("Configuration updated via patch");
+        Ok(())
     }
 }
 
+// ---------------------------------------------------------------------------
+// HotAppConfig (used by ConfigWatcher)
+// ---------------------------------------------------------------------------
+
+/// Live application configuration that can be hot-reloaded at runtime.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HotAppConfig {
+    /// Tracing / log filter directive (e.g. `"backend=debug"`).
+    pub log_level: String,
+    /// Maximum number of database connections in the pool.
+    pub max_connections: u32,
+    /// Request timeout in seconds.
+    pub request_timeout_secs: u64,
+    /// Whether the maintenance mode banner is shown.
+    pub maintenance_mode: bool,
+    /// Redis key that stores the serialised [`HotAppConfig`] JSON.
+    pub redis_config_key: String,
+}
+
+impl Default for HotAppConfig {
+    fn default() -> Self {
+        Self {
+            log_level: "backend=debug,tower_http=debug".to_string(),
+            max_connections: 10,
+            request_timeout_secs: 30,
+            maintenance_mode: false,
+            redis_config_key: "config:current".to_string(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // ConfigHandle — cheap clone, shared reader with change notification
+// ---------------------------------------------------------------------------
 
 /// A cheap-to-clone handle to the live configuration.
 #[derive(Clone)]
 pub struct ConfigHandle {
     inner: Arc<RwLock<HotAppConfig>>,
-    inner: Arc<RwLock<AppConfig>>,
     changed: watch::Receiver<()>,
 }
 
@@ -368,22 +203,20 @@ impl ConfigHandle {
 
     /// Wait until the configuration changes, then return the new snapshot.
     pub async fn wait_for_change(&mut self) -> HotAppConfig {
-    pub async fn wait_for_change(&mut self) -> AppConfig {
         let _ = self.changed.changed().await;
         self.get().await
     }
 }
 
-// ConfigWatcher
-
-/// Owns the live [`HotAppConfig`] and drives hot-reload via Redis pub/sub.
 // ---------------------------------------------------------------------------
 // ConfigWatcher — Redis pub/sub driven reload
+// ---------------------------------------------------------------------------
 
-/// Owns the live [`AppConfig`] and drives hot-reload via Redis pub/sub.
+/// Owns the live [`HotAppConfig`] and drives hot-reload via Redis pub/sub.
 ///
 /// Wrap in an [`Arc`] to share across tasks.
 pub struct ConfigWatcher {
+    inner: Arc<RwLock<HotAppConfig>>,
     notify_tx: watch::Sender<()>,
     notify_rx: watch::Receiver<()>,
 }
@@ -392,6 +225,7 @@ impl ConfigWatcher {
     /// Create a new watcher with the given initial configuration.
     pub fn new(initial: HotAppConfig) -> Self {
         let (tx, rx) = watch::channel(());
+        Self {
             inner: Arc::new(RwLock::new(initial)),
             notify_tx: tx,
             notify_rx: rx,
@@ -407,11 +241,9 @@ impl ConfigWatcher {
     }
 
     /// Atomically replace the current configuration and notify all handles.
-    pub async fn reload(&self, new_config: HotAppConfig) {
     ///
-    /// If the new config is identical to the current one, no notification is
-    /// sent.
-    pub async fn reload(&self, new_config: AppConfig) {
+    /// If the new config is identical to the current one, no notification is sent.
+    pub async fn reload(&self, new_config: HotAppConfig) {
         let old = {
             let mut guard = self.inner.write().await;
             let old = guard.clone();
@@ -448,7 +280,6 @@ impl ConfigWatcher {
         Ok(())
     }
 
-    /// Spawn a background task that subscribes to `config:reload` on Redis.
     /// Spawn a background task that subscribes to `config:reload` on Redis
     /// and calls [`Self::reload_from_redis`] on every message.
     ///
@@ -503,6 +334,7 @@ impl ConfigWatcher {
 
 // ---------------------------------------------------------------------------
 // Axum handlers
+// ---------------------------------------------------------------------------
 
 /// `POST /api/config/reload` — Reload configuration from `config.json`.
 ///
@@ -519,216 +351,8 @@ pub async fn handle_reload(
 /// Sensitive fields (e.g. database passwords embedded in URLs) are returned
 /// as-is; callers should restrict access to this endpoint appropriately.
 pub async fn handle_get_config(
+    State(state): State<Arc<crate::api::handlers::profiling::AppState>>,
 ) -> impl IntoResponse {
     let config = state.config_manager.load();
-    Json(config)
-}
-
-// Tests
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::AppConfig;
-
-    // --- ConfigManager ---
-
-    #[tokio::test]
-    async fn test_manager_load_returns_initial() {
-        let mgr = ConfigManager::new(AppConfig::default());
-        assert_eq!(*mgr.load(), AppConfig::default());
-    }
-
-    #[tokio::test]
-    async fn test_manager_reload_missing_file() {
-        let mgr = ConfigManager::new(AppConfig::default());
-        let result = mgr.reload().await;
-        assert!(matches!(result, Err(ReloadError::Io(_))));
-        // Config must be unchanged.
-        assert_eq!(*mgr.load(), AppConfig::default());
-    }
-
-    #[test]
-    fn test_manager_patch_top_level_field() {
-        let mgr = ConfigManager::new(AppConfig::default());
-        mgr.update_from_patch(serde_json::json!({ "log_level": "warn" }))
-            .unwrap();
-        assert_eq!(mgr.load().log_level, "warn");
-    }
-
-    #[test]
-    fn test_manager_patch_nested_field() {
-        let mgr = ConfigManager::new(AppConfig::default());
-        mgr.update_from_patch(serde_json::json!({ "server": { "port": 4000 } }))
-            .unwrap();
-        let cfg = mgr.load();
-        assert_eq!(cfg.server.port, 4000);
-        // Other nested fields preserved.
-        assert_eq!(cfg.server.host, "0.0.0.0");
-    }
-
-    #[test]
-    fn test_manager_patch_preserves_unpatched_fields() {
-        let mgr = ConfigManager::new(AppConfig::default());
-        mgr.update_from_patch(serde_json::json!({ "maintenance_mode": true }))
-            .unwrap();
-        let cfg = mgr.load();
-        assert!(cfg.maintenance_mode);
-        assert_eq!(cfg.max_connections, 10); // unchanged
-    }
-
-    // --- ConfigWatcher ---
-
-    fn default_watcher() -> ConfigWatcher {
-        ConfigWatcher::new(HotAppConfig::default())
-    }
-
-    #[test]
-    fn test_default_config_values() {
-        let cfg = HotAppConfig::default();
-        assert_eq!(cfg.max_connections, 10);
-        assert_eq!(cfg.request_timeout_secs, 30);
-        assert!(!cfg.maintenance_mode);
-        assert!(!cfg.log_level.is_empty());
-        assert_eq!(cfg.redis_config_key, "config:current");
-    }
-
-    fn test_config_serialisation_roundtrip() {
-        let json = serde_json::to_string(&cfg).unwrap();
-        let back: HotAppConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(cfg, back);
-    }
-
-    #[tokio::test]
-    async fn test_watcher_reload_updates_config() {
-        let watcher = default_watcher();
-        let handle = watcher.handle();
-
-        let new_cfg = HotAppConfig {
-            log_level: "info".to_string(),
-        let new_cfg = AppConfig {
-            max_connections: 50,
-            ..HotAppConfig::default()
-        };
-        watcher.reload(new_cfg.clone()).await;
-        assert_eq!(handle.get().await, new_cfg);
-    }
-
-    async fn test_reload_unchanged_does_not_notify() {
-        let mut handle = watcher.handle();
-        handle.changed.borrow_and_update();
-        watcher.reload(HotAppConfig::default()).await;
-        assert!(!handle.changed.has_changed().unwrap());
-    }
-
-    async fn test_reload_changed_notifies_handle() {
-        watcher
-            .reload(HotAppConfig {
-                maintenance_mode: true,
-                ..HotAppConfig::default()
-            })
-    #[tokio::test]
-    async fn test_watcher_reload_unchanged_no_notify() {
-        let watcher = default_watcher();
-
-        watcher.reload(AppConfig::default()).await;
-
-    }
-
-    async fn test_watcher_reload_changed_notifies() {
-
-            .reload(AppConfig { maintenance_mode: true, ..AppConfig::default() })
-            .await;
-        assert!(handle.changed.has_changed().unwrap());
-    }
-
-    async fn test_multiple_handles_see_same_update() {
-        let h1 = watcher.handle();
-        let h2 = watcher.handle();
-            max_connections: 99,
-        };
-        watcher.reload(new_cfg).await;
-    #[tokio::test]
-    async fn test_watcher_multiple_handles_see_update() {
-        let watcher = default_watcher();
-
-        watcher
-            .reload(AppConfig { max_connections: 99, ..AppConfig::default() })
-            .await;
-
-        assert_eq!(h1.get().await.max_connections, 99);
-        assert_eq!(h2.get().await.max_connections, 99);
-    }
-
-    async fn test_reload_from_redis_connection_error() {
-        let redis = RedisClient::open("redis://127.0.0.1:1/").unwrap();
-        let result = watcher.reload_from_redis(&redis).await;
-        assert!(matches!(result, Err(ReloadError::Redis(_))));
-        assert_eq!(watcher.handle().get().await, HotAppConfig::default());
-    }
-
-    #[tokio::test]
-    async fn test_watcher_wait_for_change() {
-        let watcher = Arc::new(default_watcher());
-        let mut handle = watcher.handle();
-        handle.changed.borrow_and_update();
-
-        let w2 = Arc::clone(&watcher);
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-            w2.reload(AppConfig { maintenance_mode: true, ..AppConfig::default() })
-                .await;
-        });
-
-        let updated = handle.wait_for_change().await;
-        assert!(updated.maintenance_mode);
-    }
-
-    async fn test_watcher_reload_from_redis_connection_error() {
-        let watcher = default_watcher();
-        // Port 1 is never open.
-        assert_eq!(watcher.handle().get().await, AppConfig::default());
-    }
-
-    // --- ReloadError ---
-
-    #[test]
-    fn test_reload_error_not_found_display() {
-        assert!(ReloadError::NotFound.to_string().contains("not found"));
-    }
-
-    #[test]
-    fn test_reload_error_invalid_display() {
-        let e = ReloadError::Invalid("bad value".into());
-        assert!(e.to_string().contains("bad value"));
-    }
-    let config = manager.load();
-    // Sensitive fields are already skipped or redacted by `serde(skip_serializing)` and custom `Debug`.
-    // In this case, `AppConfig` derives Serialize, and sensitive fields have `#[serde(skip_serializing)]`.
     Json(config.as_ref().clone())
-
-    #[test]
-    fn test_reload_error_deserialise_display() {
-        let inner = serde_json::from_str::<AppConfig>("not json").unwrap_err();
-        let e = ReloadError::Deserialise(inner);
-        assert!(!e.to_string().is_empty());
-    }
-
-    // --- AppConfig ---
-
-    fn test_appconfig_default_values() {
-        let cfg = AppConfig::default();
-        assert_eq!(cfg.max_connections, 10);
-        assert_eq!(cfg.request_timeout_secs, 30);
-        assert!(!cfg.maintenance_mode);
-        assert!(!cfg.log_level.is_empty());
-        assert_eq!(cfg.server.port, 3000);
-        assert_eq!(cfg.server.host, "0.0.0.0");
-    }
-
-    fn test_appconfig_serialisation_roundtrip() {
-        let json = serde_json::to_string(&cfg).unwrap();
-        let back: AppConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(cfg, back);
-    }
 }

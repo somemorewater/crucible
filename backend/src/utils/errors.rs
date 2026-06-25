@@ -250,17 +250,7 @@ impl From<DatabaseError> for AppError {
     }
 }
 
-impl From<sqlx::Error> for AppError {
-    fn from(err: sqlx::Error) -> Self {
-        AppError::Database(err)
-    }
-}
 
-impl From<redis::RedisError> for AppError {
-    fn from(err: redis::RedisError) -> Self {
-        AppError::Redis(err)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Tests

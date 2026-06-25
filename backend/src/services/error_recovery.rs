@@ -11,8 +11,6 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn, instrument};
 use crate::services::tracing::TracingService;
 
-use crate::services::tracing::TracingService;
-
 #[derive(Error, Debug, Serialize, Deserialize)]
 pub enum RecoveryError {
     #[error("Database error: {0}")]

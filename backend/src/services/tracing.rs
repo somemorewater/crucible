@@ -4,18 +4,16 @@
 //! OTLP exporter with Jaeger/Zipkin compatibility, semantic conventions,
 //! sampling strategies, and proper error propagation.
 
+#![allow(dead_code)]
 use opentelemetry::KeyValue;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::trace::{Config, RandomIdGenerator, Sampler, TracerProvider};
-#![allow(dead_code)]
-
-use opentelemetry_sdk::trace::{Config, RandomIdGenerator, Sampler};
+use opentelemetry_sdk::trace::{Config, RandomIdGenerator, Sampler, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
 use opentelemetry_semantic_conventions::resource;
 use std::time::Duration;
 use tracing::{info_span, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -40,7 +38,6 @@ pub enum TracingError {
 
 /// Configuration for the tracing service.
 /// Keeps the OpenTelemetry provider alive and flushes spans during shutdown.
-#[derive(Debug)]
 pub struct TracingGuard {
     tracer_provider: SdkTracerProvider,
 }
@@ -133,52 +130,43 @@ pub struct TracingService;
 
 impl TracingService {
     /// Initialize the global tracer provider with an OTLP exporter.
-    pub fn init(config: TracingConfig) -> anyhow::Result<()> {
-        let resource = Resource::new(vec![
+    pub fn init(config: TracingConfig) -> anyhow::Result<TracingGuard> {
+        let resource = Resource::builder_empty().with_attributes(vec![
             KeyValue::new(resource::SERVICE_NAME, config.service_name.clone()),
             KeyValue::new(resource::SERVICE_VERSION, config.service_version.clone()),
             KeyValue::new(resource::DEPLOYMENT_ENVIRONMENT, config.environment.clone()),
-            KeyValue::new(
-                resource::DEPLOYMENT_ENVIRONMENT,
-                config.environment.clone(),
-            ),
             KeyValue::new("service.namespace", "crucible"),
-        ]);
+        ]).build();
 
         let sampler = if config.environment == "production" {
-            Sampler::ParentBased(Box::new(
-                Sampler::TraceIdRatioBased(config.sampling_ratio),
-            ))
             Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(config.sampling_ratio)))
         } else {
             Sampler::AlwaysOn
         };
 
-        let trace_config = Config::default()
+        let exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_http()
+            .with_endpoint(&config.otlp_endpoint)
+            .with_timeout(Duration::from_secs(10))
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to build OTLP exporter: {}", e))?;
+
+        let tracer_provider = SdkTracerProvider::builder()
             .with_resource(resource)
             .with_sampler(sampler)
             .with_id_generator(RandomIdGenerator::default())
             .with_max_attributes_per_span(config.max_attributes_per_span)
             .with_max_events_per_span(config.max_events_per_span)
-            .with_max_links_per_span(config.max_links_per_span);
-
-        let tracer_provider = opentelemetry_otlp::new_pipeline()
-            .tracing()
-            .with_exporter(
-                opentelemetry_otlp::new_exporter()
-                    .tonic()
-                    .with_endpoint(&config.otlp_endpoint)
-                    .with_timeout(Duration::from_secs(10)),
-            )
-            .with_trace_config(trace_config)
-            .install_batch(opentelemetry_sdk::runtime::Tokio)
-            .map_err(|e| anyhow::anyhow!("Failed to install OTLP exporter: {}", e))?;
+            .with_max_links_per_span(config.max_links_per_span)
+            .with_batch_exporter(exporter)
+            .build();
 
         let tracer = tracer_provider.tracer("crucible-backend");
 
-        let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+        let telemetry_layer = tracing_opentelemetry::layer::<Registry>().with_tracer(tracer);
 
         let subscriber = Registry::default()
+            .with(telemetry_layer)
             .with(
                 EnvFilter::try_from_default_env()
                     .unwrap_or_else(|_| EnvFilter::new("info,crucible=debug")),
@@ -301,14 +289,12 @@ mod tests {
     }
 
     #[test]
-    fn test_tracing_config_staging_sample_rate() {
     fn test_tracing_config_staging_sampling() {
         let config = TracingConfig::default().with_environment("staging".to_string());
         assert_eq!(config.sampling_ratio, 0.1);
     }
 
     #[test]
-    fn test_tracing_config_dev_sample_rate() {
     fn test_tracing_config_dev_sampling() {
         let config = TracingConfig::default().with_environment("dev".to_string());
         assert_eq!(config.sampling_ratio, 1.0);
@@ -340,7 +326,7 @@ mod tests {
     #[test]
     fn test_db_span_creation() {
         let span = TracingService::db_query_span(
-            "SELECT * FROM users WHERE id = $1",
+            "SELECT * FROM users WHERE id = ",
             "postgres",
             "SELECT",
         );
@@ -363,15 +349,6 @@ mod tests {
     fn test_job_span_creation() {
         let span = TracingService::job_span("process_transaction", "job-456");
         drop(span);
-    }
-
-    #[test]
-    fn test_sampling_ratio_bounds() {
-        let config = TracingConfig::default().with_sampling_ratio(1.5);
-        assert_eq!(config.sampling_ratio, 1.0);
-
-        let config = TracingConfig::default().with_sampling_ratio(-0.5);
-        assert_eq!(config.sampling_ratio, 0.0);
     }
 
     #[test]

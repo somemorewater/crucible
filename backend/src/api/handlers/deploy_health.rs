@@ -87,7 +87,7 @@ impl std::str::FromStr for DeployStatus {
 }
 
 /// A deployment record as stored in the database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Deployment {
     pub id: Uuid,
     pub contract_id: String,
@@ -140,8 +140,7 @@ pub async fn create_deployment(
         return Err(AppError::BadRequest("version is required".into()));
     }
 
-    let deployment = sqlx::query_as!(
-        Deployment,
+    let deployment: Deployment = sqlx::query_as(
         r#"
         INSERT INTO deployments (contract_id, version, status, metadata)
         VALUES ($1, $2, 'pending', $3)
@@ -150,14 +149,15 @@ pub async fn create_deployment(
             deployed_at, last_checked_at, error_message,
             metadata, created_at, updated_at
         "#,
-        body.contract_id,
-        body.version,
-        body.metadata,
     )
+    .bind(&body.contract_id)
+    .bind(&body.version)
+    .bind(&body.metadata)
     .fetch_one(&state.db)
-    .await?;
+    .await
+    .map_err(AppError::from)?;
 
-    Ok((StatusCode::CREATED, Json(deployment)))
+    Ok((StatusCode::CREATED, Json::<Deployment>(deployment)))
 }
 
 /// `GET /api/v1/deployments/:id` — fetch a single deployment by UUID.
@@ -177,8 +177,7 @@ pub async fn get_deployment(
         }
     }
 
-    let deployment = sqlx::query_as!(
-        Deployment,
+    let deployment: Deployment = match sqlx::query_as(
         r#"
         SELECT id, contract_id, version, status,
                deployed_at, last_checked_at, error_message,
@@ -186,17 +185,20 @@ pub async fn get_deployment(
         FROM deployments
         WHERE id = $1
         "#,
-        id,
     )
+    .bind(id)
     .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(format!("deployment {id} not found")))?;
+    .await {
+        Ok(Some(v)) => v,
+        Ok(None) => return Err(AppError::NotFound(format!("deployment {id} not found"))),
+        Err(e) => return Err(AppError::from(e)),
+    };
 
     if let Ok(json) = serde_json::to_string(&deployment) {
         let _: Result<(), _> = redis.set_ex(&cache_key, json, CACHE_TTL_SECS).await;
     }
 
-    Ok(Json(deployment))
+    Ok(Json::<Deployment>(deployment))
 }
 
 /// `GET /api/v1/deployments/contract/:contract_id` — list all deployments for a contract.
@@ -216,8 +218,7 @@ pub async fn list_deployments_for_contract(
         }
     }
 
-    let deployments = sqlx::query_as!(
-        Deployment,
+    let deployments: Vec<Deployment> = sqlx::query_as(
         r#"
         SELECT id, contract_id, version, status,
                deployed_at, last_checked_at, error_message,
@@ -226,16 +227,17 @@ pub async fn list_deployments_for_contract(
         WHERE contract_id = $1
         ORDER BY deployed_at DESC
         "#,
-        contract_id,
     )
+    .bind(&contract_id)
     .fetch_all(&state.db)
-    .await?;
+    .await
+    .map_err(AppError::from)?;
 
     if let Ok(json) = serde_json::to_string(&deployments) {
         let _: Result<(), _> = redis.set_ex(&cache_key, json, CACHE_TTL_SECS).await;
     }
 
-    Ok(Json(deployments))
+    Ok(Json::<Vec<Deployment>>(deployments))
 }
 
 /// `PATCH /api/v1/deployments/:id/status` — update the health status of a deployment.
@@ -251,8 +253,7 @@ pub async fn update_deployment_status(
     // Validate status value
     body.status.parse::<DeployStatus>()?;
 
-    let deployment = sqlx::query_as!(
-        Deployment,
+    let deployment: Deployment = match sqlx::query_as(
         r#"
         UPDATE deployments
         SET status          = $2,
@@ -265,13 +266,16 @@ pub async fn update_deployment_status(
             deployed_at, last_checked_at, error_message,
             metadata, created_at, updated_at
         "#,
-        id,
-        body.status,
-        body.error_message,
     )
+    .bind(id)
+    .bind(&body.status)
+    .bind(&body.error_message)
     .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(format!("deployment {id} not found")))?;
+    .await {
+        Ok(Some(v)) => v,
+        Ok(None) => return Err(AppError::NotFound(format!("deployment {id} not found"))),
+        Err(e) => return Err(AppError::from(e)),
+    };
 
     // Invalidate cache
     let cache_key = format!("deploy_health:deployment:{id}");
@@ -280,7 +284,7 @@ pub async fn update_deployment_status(
         warn!(error = %e, "Failed to invalidate deployment cache");
     }
 
-    Ok(Json(deployment))
+    Ok(Json::<Deployment>(deployment))
 }
 
 // ---------------------------------------------------------------------------
