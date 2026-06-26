@@ -302,6 +302,22 @@ impl MockToken {
         let client = TokenClient::new(&self.env, &self.address);
         client.transfer(from, to, &amount);
     }
+    
+    /// Transfers tokens from one account to another using an allowance (spender flow).
+    ///
+    /// # Arguments
+    ///
+    /// * `spender` - The address performing the transfer (must have allowance).
+    /// * `from` - The token owner's address.
+    /// * `to` - The recipient's address.
+    /// * `amount` - The amount to transfer (in smallest units).
+    ///
+    /// This method mocks all auths so the spender can act without explicit auth signatures.
+    pub fn transfer_from(&self, spender: &Address, from: &Address, to: &Address, amount: i128) {
+        self.env.mock_all_auths();
+        let client = TokenClient::new(&self.env, &self.address);
+        client.transfer_from(spender, from, to, &amount);
+    }
 
     /// Sets a new admin for the token contract.
     ///
