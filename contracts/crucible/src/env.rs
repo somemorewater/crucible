@@ -388,8 +388,13 @@ impl MockEnv {
 
         let mut budget = self.inner.budget();
         budget.reset_default();
-        let _ = f();
-        CostReport::new(budget.cpu_instruction_cost(), budget.memory_bytes_cost())
+        let result = f();
+        let fee_estimate = self.inner.cost_estimate().fee();
+        CostReport::new_with_fee_estimate(
+            budget.cpu_instruction_cost(),
+            budget.memory_bytes_cost(),
+            fee_estimate,
+        )
     }
 
     /// Simulate a contract call and return a dry-run result.
@@ -408,12 +413,13 @@ impl MockEnv {
         self.inner.mock_all_auths();
         let result = f();
         let instructions = budget.cpu_instruction_cost();
+        let fee = self.inner.cost_estimate().fee().total;
         let auths = self.inner.auths().iter().map(|(a, _)| a.clone()).collect();
         // Clear the global auth bypass so it does not leak into later operations.
         self.inner.mock_auths(&[]);
 
         SimulatedTx::new(
-            (instructions / 100) as i64,
+            fee,
             instructions,
             auths,
             true,

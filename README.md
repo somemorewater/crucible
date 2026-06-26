@@ -392,7 +392,7 @@ The `CostReport` returned by `env.measure()` contains:
 |---|---|---|
 | `instructions()` | `u64` | Total CPU instructions consumed |
 | `memory_bytes()` | `u64` | Peak memory allocation in bytes |
-| `fee_stroops()` | `i64` | Estimated network fee in stroops |
+| `fee_stroops()` | `i64` | Estimated network fee in stroops; SDK-backed when available |
 | `report()` | `String` | Pretty-printed summary table |
 
 You can also store a cost snapshot and assert it does not regress across commits:

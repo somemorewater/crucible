@@ -1,10 +1,13 @@
 //! Helpers for measuring and reporting contract execution costs.
 
+use soroban_env_host::FeeEstimate;
+
 /// A report of the compute costs for a contract invocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CostReport {
     instructions: u64,
     memory: u64,
+    fee_estimate: Option<FeeEstimate>,
 }
 
 impl CostReport {
@@ -13,6 +16,20 @@ impl CostReport {
         Self {
             instructions,
             memory,
+            fee_estimate: None,
+        }
+    }
+
+    /// Creates a new cost report with an SDK-derived fee estimate.
+    pub fn new_with_fee_estimate(
+        instructions: u64,
+        memory: u64,
+        fee_estimate: FeeEstimate,
+    ) -> Self {
+        Self {
+            instructions,
+            memory,
+            fee_estimate: Some(fee_estimate),
         }
     }
 
@@ -28,10 +45,19 @@ impl CostReport {
 
     /// Returns the estimated network fee in stroops.
     ///
-    /// This is a simplified estimation based on instructions.
-    /// Heuristic: 100 instructions = 1 stroop (calibrate as needed).
+    /// When available, this uses the Soroban SDK fee estimate derived from the
+    /// invocation resources. If an SDK-backed estimate is unavailable, it falls
+    /// back to a simplified instruction-based approximation.
     pub fn fee_stroops(&self) -> i64 {
-        (self.instructions / 100) as i64
+        self.fee_estimate
+            .as_ref()
+            .map(|fee| fee.total)
+            .unwrap_or((self.instructions / 100) as i64)
+    }
+
+    /// Returns whether the fee estimate comes from the Soroban SDK.
+    pub fn uses_sdk_fee_estimate(&self) -> bool {
+        self.fee_estimate.is_some()
     }
 
     /// Returns a human-readable formatted table report of the costs.
@@ -51,6 +77,11 @@ impl CostReport {
         let instructions_str = format_with_commas(self.instructions);
         let memory_str = format_with_commas(self.memory);
         let fee_str = format!("{} str", self.fee_stroops());
+        let fee_source = if self.uses_sdk_fee_estimate() {
+            "SDK"
+        } else {
+            "Approx"
+        };
 
         // Create formatted table with box-drawing characters
         let mut output = String::new();
@@ -63,6 +94,7 @@ impl CostReport {
         ));
         output.push_str(&format!("│ Memory (bytes)      │ {:>9} │\n", memory_str));
         output.push_str(&format!("│ Estimated fee       │ {:>9} │\n", fee_str));
+        output.push_str(&format!("│ Fee source          │ {:>9} │\n", fee_source));
         output.push_str("└─────────────────────┴───────────┘");
 
         output
@@ -195,6 +227,7 @@ fn check_within_tolerance(metric: &str, saved: u64, current: u64, tolerance: f64
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_env_host::FeeEstimate;
 
     #[test]
     fn test_cost_report_creation() {
@@ -207,6 +240,32 @@ mod tests {
     fn test_fee_stroops_calculation() {
         let report = CostReport::new(10_000, 0);
         assert_eq!(report.fee_stroops(), 100); // 10_000 / 100 = 100
+    }
+
+    #[test]
+    fn test_fee_stroops_uses_sdk_fee_estimate_when_available() {
+        let sdk_fee = FeeEstimate {
+            total: 42,
+            instructions: 10,
+            disk_read_entries: 0,
+            write_entries: 0,
+            disk_read_bytes: 0,
+            write_bytes: 0,
+            contract_events: 0,
+            persistent_entry_rent: 0,
+            temporary_entry_rent: 0,
+        };
+        let report = CostReport::new_with_fee_estimate(10_000, 0, sdk_fee.clone());
+        assert!(report.uses_sdk_fee_estimate());
+        assert_eq!(report.fee_stroops(), 42);
+        assert_eq!(report.report().contains("SDK"), true);
+    }
+
+    #[test]
+    fn test_fee_stroops_falls_back_to_instruction_heuristic() {
+        let report = CostReport::new(50_000, 0);
+        assert_eq!(report.uses_sdk_fee_estimate(), false);
+        assert_eq!(report.fee_stroops(), 500); // 50_000 / 100 = 500
     }
 
     #[test]
